@@ -25,12 +25,12 @@
 </section>
 {% for section in sections %}
 <section class="panel"><h2>{{ section.title }}</h2><div class="table-wrap"><table>
-  <thead><tr><th>Kod</th><th>Ad</th><th>Tür</th><th>Birim ihtiyaç</th><th>Ölçü birimi</th><th>Üretim alanı</th><th>Kaynak satırı</th><th>İnceleme</th></tr></thead>
+  <thead><tr><th>Kod</th><th>Ad</th><th>Tür</th><th>Birim ihtiyaç</th><th>Ölçü birimi</th><th>Üretim alanı</th><th>Üretim / temin rotası</th><th>Kaynak satırı</th><th>İnceleme</th></tr></thead>
   <tbody>{% for row in section.rows %}<tr>
     <td>{{ row.line.component_code|default:'—' }}</td><td>{{ row.line.component_name|default:'—' }}</td><td>{{ row.line.component_kind|default:'—' }}</td>
-    <td>{{ row.line.quantity|requirement_amount:row.line.unit }}</td><td>{{ row.line.unit|default:'—' }}</td><td>{{ row.line.component.get_production_area_display|default:'—' }}</td><td>{{ row.line.sheet }}:{{ row.line.row_number }}</td>
+    <td>{{ row.line.quantity|requirement_amount:row.line.unit }}</td><td>{{ row.line.unit|default:'—' }}</td><td>{{ row.line.component.get_production_area_display|default:'—' }}</td><td>{% if row.route %}{% if perms.erp.view_productionroute %}<a href="{% url 'route_detail' row.route.pk %}">{{ row.route.get_supply_method_display|default:'Rota' }}{% if row.route.flow_id %} · {{ row.route.flow.name }}{% endif %} →</a>{% else %}{{ row.route.get_supply_method_display|default:'Rota tanımlı' }}{% endif %}{% else %}—{% endif %}</td><td>{{ row.line.sheet }}:{{ row.line.row_number }}</td>
     <td class="wrap">{% for issue in row.issues %}<small>{{ issue }}</small>{% empty %}<span class="badge success">Bilgi tam</span>{% endfor %}</td>
-  </tr>{% empty %}<tr><td colspan="8" class="empty">Bu reçetede {{ section.title|lower }} için kayıt bulunmuyor.</td></tr>{% endfor %}</tbody>
+  </tr>{% empty %}<tr><td colspan="9" class="empty">Bu reçetede {{ section.title|lower }} için kayıt bulunmuyor.</td></tr>{% endfor %}</tbody>
 </table></div></section>
 {% endfor %}
 {% else %}<section class="panel"><h2>Yarı mamuller ve hammaddeler</h2><p>Bu ana ürün için henüz reçete kaydı yok.</p></section>{% endif %}

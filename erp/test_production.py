@@ -175,7 +175,7 @@ class CatalogTests(TestCase):
         self.client.force_login(self.admin)
         response=self.client.get('/')
         self.assertContains(response,'Eşik belirtilmedi')
-        self.assertContains(response,'Üretim alanları',count=0)  # No default flows in this test setup.
+        self.assertContains(response,'Ahşap üretimi')
 
     def test_stock_requires_explicit_unit_on_imported_parent(self):
         import_catalog(complete_workbook(),'list.xlsx')

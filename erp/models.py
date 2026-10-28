@@ -14,6 +14,7 @@ class Product(models.Model):
     minimum_stock = models.DecimalField('Asgari stok', max_digits=14, decimal_places=3, default=0, null=True, blank=True, validators=[MinValueValidator(0)])
     kind = models.CharField('Kart türü', max_length=12, blank=True, choices=[('finished','Mamul'),('semi','Yarı mamul'),('raw','Hammadde'),('part','Parça')])
     production_area = models.CharField('Üretim alanı', max_length=10, blank=True, choices=[('wood','Ahşap'),('casting','Döküm')])
+    supply_method = models.CharField('Temin yöntemi', max_length=12, blank=True, choices=[('manufacture','İç üretim'),('purchase','Dışarıdan hazır temin')])
     category = models.CharField('Ürün grubu', max_length=100, blank=True)
     active = models.BooleanField('Aktif', default=True)
     class Meta:
@@ -126,11 +127,17 @@ class ProductionRoute(models.Model):
     product = models.ForeignKey(Product, on_delete=models.PROTECT, verbose_name='Üretilecek ürün')
     version = models.PositiveIntegerField('Sürüm', default=1, validators=[MinValueValidator(1)])
     active = models.BooleanField('Aktif', default=True)
+    flow = models.ForeignKey('ProductionFlow', on_delete=models.PROTECT, null=True, blank=True, verbose_name='Standart üretim akışı')
+    supply_method = models.CharField('Temin yöntemi', max_length=12, blank=True, choices=[('manufacture','İç üretim'),('purchase','Dışarıdan hazır temin')])
+    rule_key = models.CharField('Atama kuralı', max_length=40, blank=True, editable=False)
     class Meta:
         verbose_name = 'Üretim rotası'
         verbose_name_plural = 'Üretim rotaları'
-        constraints = [models.UniqueConstraint(fields=['product','version'], name='unique_route_version')]
+        constraints = [models.UniqueConstraint(fields=['product','version'], name='unique_route_version'), models.UniqueConstraint(fields=['product','rule_key'], condition=~Q(rule_key=''), name='unique_managed_product_route')]
     def __str__(self): return f'{self.name} · v{self.version}'
+    def clean(self):
+        if self.supply_method=='purchase' and self.flow_id:
+            raise ValidationError({'flow':'Hazır temin rotasında iç üretim akışı seçilemez.'})
 
 class RouteStep(models.Model):
     route = models.ForeignKey(ProductionRoute, on_delete=models.PROTECT, related_name='steps', verbose_name='Rota')
@@ -223,6 +230,7 @@ class ProductionJob(models.Model):
     quantity = models.DecimalField('Üretim miktarı', max_digits=14, decimal_places=3, validators=[POSITIVE])
     unit = models.CharField('Üretim birimi', max_length=12, choices=Product._meta.get_field('unit').choices)
     flow = models.ForeignKey(ProductionFlow, on_delete=models.PROTECT, verbose_name='Üretim akışı')
+    route = models.ForeignKey(ProductionRoute, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Ürüne özel rota')
     recipe = models.ForeignKey(MaterialRecipe, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Malzeme reçetesi')
     casting_material = models.CharField('Döküm hammaddesi', max_length=10, blank=True, choices=[('aluminium','Alüminyum Külçe'),('pig','Pik')])
     assembly_required = models.BooleanField('Montaj gerekiyor mu?', null=True, blank=True)
@@ -239,6 +247,17 @@ class ProductionJob(models.Model):
         constraints = [models.CheckConstraint(condition=Q(quantity__gt=0), name='positive_job_quantity')]
     def __str__(self): return self.number
     def clean(self):
+        if self.route_id:
+            if self.product_id and self.route.product_id!=self.product_id:
+                raise ValidationError({'route':'Rota seçilen ürün / yarı mamul kartına ait olmalıdır.'})
+            if not self.route.active:
+                raise ValidationError({'route':'Pasif rota üretimde kullanılamaz.'})
+            if self.route.supply_method=='purchase':
+                raise ValidationError({'route':'Bu yarı mamul dışarıdan hazır temin edilir; iç üretim işi açılamaz.'})
+            if self.flow_id and self.route.flow_id and self.route.flow_id!=self.flow_id:
+                raise ValidationError({'flow':'Seçilen akış ürün rotasıyla uyuşmuyor.'})
+        if self.product_id and self.product.supply_method=='purchase' and self.flow_id and self.flow.area!='shared':
+            raise ValidationError({'product':'Dışarıdan hazır temin edilen kart için ahşap/döküm üretimi başlatılamaz.'})
         if self.product_id and self.product.unit and self.unit!=self.product.unit:
             raise ValidationError({'unit':'Üretim birimi ürün kartındaki birimle aynı olmalıdır.'})
         if self.recipe_id and self.product_id and self.recipe.product_id != self.product_id:

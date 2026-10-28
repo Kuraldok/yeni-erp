@@ -16,6 +16,7 @@ urlpatterns = [
     path('excel-aktarim/<int:pk>/', views.catalog_report, name='catalog_report'),
     path('recete/<int:pk>/', views.recipe_detail, name='recipe_detail'),
     path('uretim-akisi/<int:pk>/', views.flow_detail, name='flow_detail'),
+    path('rota/<int:pk>/', views.route_detail, name='route_detail'),
     path('uretim-isi/<int:pk>/', views.production_job, name='production_job'),
     path('modul/<slug:slug>/', views.listing, name='listing'),
     path('modul/<slug:slug>/yeni/', views.edit, name='create'),

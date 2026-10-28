@@ -9,7 +9,7 @@ from django.forms import modelform_factory
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import Http404
 from django.urls import reverse
-from .models import Product, Partner, Order, StockMovement, ProductionJob, MaterialRecipe, stock_balance
+from .models import Product, Partner, Order, StockMovement, ProductionJob, ProductionRoute, MaterialRecipe, stock_balance
 from .registry import MODULES, READ_ONLY_MODELS
 from .products import main_products, product_groups, filter_group
 
@@ -79,11 +79,11 @@ def listing(request, slug):
             if isinstance(value,list): value = ' · '.join(str(v) for v in value) if value else 'İnceleme notu yok'
             if isinstance(value,dict): value = f"{value.get('rows',0)} satır · {value.get('rows_with_issues',0)} inceleme"
             values.append(value)
-        detail_names={'urunler':'product_detail','receteler':'recipe_detail','excel-aktarimlari':'catalog_report','uretim-akislari':'flow_detail','uretim-isleri':'production_job'}
+        detail_names={'urunler':'product_detail','rotalar':'route_detail','receteler':'recipe_detail','excel-aktarimlari':'catalog_report','uretim-akislari':'flow_detail','uretim-isleri':'production_job'}
         detail=reverse(detail_names[slug],args=[obj.pk]) if slug in detail_names else ''
         editable=model is not ProductionJob or obj.state=='draft'
         rows.append({'pk':obj.pk, 'values':values,'detail':detail,'editable':editable,'product_detail':detail if model is Product else ''})
-    return render(request,'erp/list.html', {'title':title,'slug':slug,'has_detail':slug in ['urunler','receteler','excel-aktarimlari','uretim-akislari','uretim-isleri'],'headers':headers,'rows':rows,'page':page,'q':search,'groups':groups,'category':category,'can_add':model not in READ_ONLY_MODELS and permitted(request.user,'add',model),'can_edit':model not in READ_ONLY_MODELS and model is not StockMovement and permitted(request.user,'change',model)})
+    return render(request,'erp/list.html', {'title':title,'slug':slug,'has_detail':slug in ['urunler','rotalar','receteler','excel-aktarimlari','uretim-akislari','uretim-isleri'],'headers':headers,'rows':rows,'page':page,'q':search,'groups':groups,'category':category,'can_add':model not in READ_ONLY_MODELS and permitted(request.user,'add',model),'can_edit':model not in READ_ONLY_MODELS and model is not StockMovement and permitted(request.user,'change',model)})
 
 
 @login_required
@@ -142,7 +142,19 @@ def edit(request, slug, pk=None):
     if model is ProductionJob and pk is not None and obj.state!='draft':
         raise PermissionDenied('Başlatılmış iş emrinin tanımı değiştirilemez.')
     Form = modelform_factory(model, exclude=['created_by','created_at'], widgets={'date':forms.DateInput(attrs={'type':'date'},format='%Y-%m-%d'),'due_date':forms.DateInput(attrs={'type':'date'},format='%Y-%m-%d')})
-    form = Form(request.POST or None, instance=obj)
+    initial = {}
+    if model is ProductionJob and request.method=='GET' and pk is None and request.GET.get('route'):
+        if not all(request.user.has_perm('erp.'+p) for p in ['view_productionroute','view_product','view_productionflow']):
+            raise PermissionDenied
+        try:
+            route_id=int(request.GET['route'])
+        except (TypeError,ValueError):
+            raise Http404
+        route=get_object_or_404(ProductionRoute.objects.select_related('product','flow'),pk=route_id,active=True)
+        if route.supply_method=='purchase' or not route.flow_id:
+            raise PermissionDenied('Bu rota üretim işi açmaya uygun değil.')
+        initial={'route':route.pk,'product':route.product_id,'flow':route.flow_id,'unit':route.product.unit}
+    form = Form(request.POST or None, instance=obj, initial=initial)
     # Do not leak names of related records through selectors without view permission.
     for field in form.fields.values():
         if isinstance(field, forms.ModelChoiceField) and not permitted(request.user,'view',field.queryset.model):
@@ -222,6 +234,14 @@ def flow_detail(request,pk):
     if not request.user.has_perm('erp.view_productionflow'):raise PermissionDenied
     flow=get_object_or_404(ProductionFlow,pk=pk)
     return render(request,'erp/flow.html',{'flow':flow})
+
+
+@login_required
+def route_detail(request,pk):
+    if not request.user.has_perm('erp.view_productionroute'):
+        raise PermissionDenied
+    route=get_object_or_404(ProductionRoute.objects.select_related('product','flow'),pk=pk)
+    return render(request,'erp/route.html',{'route':route,'slug':'rotalar'})
 
 @login_required
 def production_job(request,pk):

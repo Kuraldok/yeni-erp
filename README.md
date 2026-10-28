@@ -86,3 +86,8 @@ Ana ürünün koduna, adına veya **Ayrıntılar** bağlantısına tıkladığı
 Ana ürün görünümü mevcut üst ürün ilişkilerinden belirlenir; yarı mamul, hammadde ve parça kartları ana listede gösterilmez. Henüz reçetesi olmayan elle açılmış mamul/sınıflandırılmamış bağımsız kartlar görünmeye devam eder. Liste değişikliği stok, kart veya reçete kayıtlarını silmez; bileşen ayrıntıları için mevcut reçete görüntüleme izinleri geçerlidir.
 
 Ürün ayrıntısındaki birim ihtiyaçlar adet için ondalıksız, diğer ölçü birimleri için üç ondalık basamakla gösterilir (örneğin `2 Adet`, `21,000 KG`). Aynı gösterim reçetenin ihtiyaç hesabında da kullanılır. Bu yalnızca ekrandaki biçimdir; hesaplamalarda ve veri tabanında özgün hassasiyet korunur. Boş miktarlar boş kalır. Ana kontrol panelindeki ürün toplamı, Ürün Kartları listesindeki ana ürünleri sayar; bileşenleri veya aynı ürüne ait farklı reçete sürümlerini ayrıca saymaz.
+
+
+## Yarı mamul üretim ve temin rotaları
+
+Çeşmelerin tüm yarı mamulleri döküm üretimine; bankların Taşıyıcı Ayak/Gövde yarı mamulleri döküme, Ahşap Bölüm yarı mamulleri ahşap üretimine bağlanır. Diğer bank yarı mamulleri dışarıdan hazır temin edilir. Rotalar ana ürünün yarı mamul ayrıntılarından ve **Üretim ve temin rotaları** menüsünden açılır. Hazır temin kartları için iç üretim işi açılamaz. Ayrıntılar ve tekrar çalıştırılabilir kurulum komutu [üretim rehberinde](docs/uretim-ve-excel.md) yer alır.

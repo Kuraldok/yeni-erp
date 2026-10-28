@@ -6,7 +6,7 @@ MODULES = {
     'cariler': (Partner, 'Müşteri ve tedarikçiler', ['name','kind','phone','email']),
     'siparisler': (Order, 'Siparişler', ['number','kind','partner','date','status','currency','total']),
     'siparis-kalemleri': (OrderLine, 'Sipariş kalemleri', ['order','product','quantity','unit_price','total']),
-    'rotalar': (ProductionRoute, 'Üretim rotaları', ['name','product','version','active']),
+    'rotalar': (ProductionRoute, 'Üretim ve temin rotaları', ['name','product','supply_method','flow','version','active']),
     'receteler': (MaterialRecipe, 'Ürün reçeteleri', ['source','sheet','parent_code','parent_name','product']),
     'recete-satirlari': (MaterialRequirement, 'Reçete satırları ve eksikler', ['sheet','row_number','parent_code','component_code','component_name','component_kind','quantity','unit','issues']),
     'excel-aktarimlari': (CatalogImport, 'Excel aktarımları', ['filename','created_at','summary']),

@@ -171,4 +171,6 @@ def import_catalog(content, filename, actor=None):
             'types':dict(Counter(r['component_kind'] for r in rows)),
         }
         batch.save(update_fields=['summary'])
+        from .routing import apply_component_routes
+        apply_component_routes(source=batch)
     return batch,True

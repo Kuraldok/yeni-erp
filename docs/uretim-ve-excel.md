@@ -15,7 +15,7 @@ flowchart LR
     M --> N --> O[Teslimata hazır]
 ```
 
-Akışlar işletmenin tarif ettiği aşamalardır. Bir ürünün hangi alanda üretileceği, ahşap hammaddesinin türü/miktarı, operasyon süreleri ve montaj ihtiyacı Excel'de açıkça belirtilmiyorsa otomatik atanmaz. Standart akışlarda süreler boş bırakılır. Kompozit, beton veya diğer malzeme türleri ahşap/döküm olarak sınıflandırılmaz.
+Akışlar işletmenin tarif ettiği aşamalardır. Bir ürünün hangi alanda üretileceği, ahşap hammaddesinin türü/miktarı, operasyon süreleri ve montaj ihtiyacı Excel'de veya işletmenin açıkça belirlediği rota kurallarında belirtilmiyorsa otomatik atanmaz. Standart akışlarda süreler boş bırakılır. Kompozit, beton veya diğer malzeme türleri ahşap/döküm olarak sınıflandırılmaz.
 
 ## Excel'i görmek ve aktarmak
 
@@ -77,3 +77,31 @@ Testler sentetik küçük Excel dosyaları oluşturur; işletmenin Excel'i depoy
 - Önceden bulunan kullanıcı ve iş kayıtları değişiklik öncesi yedekle karşılaştırıldı; korundukları doğrulandı.
 - Gerçek aktarım üzerinde ana panel, listeler, rapor, ihtiyaç hesabı ve üç üretim akışı ekranı oluşturuldu; yanıtlar başarılı.
 - PostgreSQL eşzamanlı yük ve gerçek mobil tarayıcı testi yapılmadı. GitHub Actions sonucu yerel test sonucu olarak sunulmaz.
+
+
+## Çeşme ve park bahçe bankı yarı mamul rotaları
+
+İşletmenin verdiği kurallar artık yarı mamul kartlarına uygulanır:
+
+| Kategori / yarı mamul | Temin yöntemi | Rota |
+| --- | --- | --- |
+| Çeşmelerde tüm yarı mamuller | İç üretim | Döküm |
+| Banklarda Taşıyıcı Ayak ve Gövde | İç üretim | Döküm |
+| Banklarda Ahşap Bölüm | İç üretim | Ahşap |
+| Banklardaki diğer adı belli yarı mamuller | Dışarıdan hazır temin | Dışarıdan hazır temin |
+
+Kural yalnızca bu kategorilerin **Yarı Mamul** satırlarına uygulanır. Hammaddeler, ana ürünler ve diğer kategoriler bu işlemle sınıflandırılmaz. Bank yarı mamulünün adı boşsa hazır temin olduğu varsayılmaz. Çeşmelerde Pirinç Musluk gibi adlar da işletmenin “tüm yarı mamuller döküm” kuralına dahildir; adından farklı temin yolu tahmin edilmez.
+
+**Ürün kartları → Ana ürün → Yarı mamuller ve hammaddeler → Üretim / temin rotası** yolundan adımları açabilirsiniz. Menüdeki **Üretim ve temin rotaları** ekranı tüm tanımlı rotaları listeler. Döküm/ahşap rotası ekranındaki **Bu rotayla iş emri aç** bağlantısı ürün, rota, akış ve kartın bilinen birimini seçer. İş emri numarası, üretim miktarı ve döküm hammaddesi kullanıcı tarafından girilir.
+
+Tek bir uygun etkin iç üretim rotası varsa, iş emri başlatıldığında bu rota otomatik seçilir. Birden fazla uygun rota varsa hangisinin kullanılacağı açıkça seçilmelidir. Farklı ürüne ait, pasif, hazır temin veya seçilen akışla uyuşmayan rota üretim işinde kullanılamaz. Başlatılan işin adımları rotadan kopyalanır; sonraki rota düzenlemeleri başlamış işin geçmişini değiştirmez.
+
+Hazır temin parçalarına döküm/ahşap aşaması eklenmez. Bu rotalar bir üretim işi veya satın alma siparişi başlatmaz; miktar, tedarikçi, fiyat ve teslim süresi ayrıca belirlenir. Gerekirse ayrı ortak bitirme akışıyla paketleme takip edilebilir. Stok hareketleri hâlâ ayrıca kaydedilir.
+
+Yeni Excel aktarımında bu kurallara uyan yarı mamullerin rotaları da oluşturulur. Aynı kartın birden fazla reçetede kullanılması ikinci bir rota oluşturmaz. Kuralları mevcut katalog üzerinde tekrar uygulamak için:
+
+```bash
+.venv/bin/python manage.py setup_component_routes
+```
+
+Komut mevcut rotaları/adımları, elle girilmiş süreleri veya çelişen mevcut üretim/temin tanımlarını ezmez; çelişkileri raporlar. Kartın farklı kategorilerde çelişkili rotalara bağlanması durumunda seçim yapmaz. Önceden elle oluşturulmuş rotalar korunur; gerektiğinde yeni sürüm oluşturulur. `scripts/setup.sh` bu adımı da içerir. Süreler ve hammadde miktarları bu kurallarla doldurulmaz.
