@@ -1,0 +1,52 @@
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.utils import timezone
+from .models import ProductionJob, ProductionJobStep
+
+
+def material_plan(recipe, quantity):
+    """Workbook's flat BOM, without assuming how raw material is split among parts."""
+    rows=[]
+    problems=list(recipe.issues)
+    for line in recipe.lines.select_related('component').all():
+        issues=list(line.issues)
+        if not line.component_id: issues.append('Stok kartı eşleştirmesi yok.')
+        rows.append({'line':line,'required':line.quantity*quantity if line.quantity is not None else None,'issues':issues})
+        problems.extend(f'{line.sheet}:{line.row_number}: {issue}' for issue in issues)
+    if not rows:problems.append('Reçetenin bileşen satırı yok.')
+    return rows,problems
+
+@transaction.atomic
+def advance_job(job_id, actor, expected):
+    job=ProductionJob.objects.select_for_update(of=('self',)).select_related('flow','product','recipe').get(pk=job_id)
+    if job.state=='completed': raise ValidationError('İş emri zaten tamamlandı.')
+    pending=job.steps.filter(completed_at__isnull=True).order_by('sequence').first()
+    token='start' if job.state=='draft' else str(pending.pk) if pending else ''
+    if expected!=token: raise ValidationError('İş emrinin aşaması değişti. Güncel durumu kontrol edin; işlem tekrarlanmadı.')
+    if job.state=='draft':
+        job.full_clean()
+        if job.recipe_id:
+            _,problems=material_plan(job.recipe,job.quantity)
+            if problems:
+                raise ValidationError('Reçetede eksik veya çelişkili bilgi var. Kaynak Excel düzeltilip tekrar aktarılmadan başlatılamaz.')
+        previous=list(job.preceding_jobs.select_for_update().all())
+        if any(p.pk==job.pk or p.state!='completed' for p in previous):
+            raise ValidationError('Bağlı ahşap/döküm işleri tamamlanmadan bu iş başlatılamaz.')
+        if previous and job.flow.area!='shared':
+            raise ValidationError('Önceki işler yalnızca ortak montaj/paketleme akışına bağlanabilir.')
+        definitions=list(job.flow.steps.all())
+        definitions=[s for s in definitions if not s.optional_assembly or job.assembly_required is True]
+        if not definitions:raise ValidationError('Akışın uygulanacak adımı yok.')
+        ProductionJobStep.objects.bulk_create([ProductionJobStep(job=job,sequence=s.sequence,name=s.name) for s in definitions])
+        job.state='running'
+        job.save(update_fields=['state'])
+        return 'İş emri başlatıldı. İlk aşama bekliyor.'
+    step=job.steps.filter(completed_at__isnull=True).order_by('sequence').first()
+    if not step:raise ValidationError('Tamamlanacak aşama bulunamadı.')
+    step.completed_at=timezone.now()
+    step.completed_by=actor
+    step.save(update_fields=['completed_at','completed_by'])
+    if not job.steps.filter(completed_at__isnull=True).exists():
+        job.state='completed'
+        job.save(update_fields=['state'])
+    return f'{step.name} tamamlandı.'

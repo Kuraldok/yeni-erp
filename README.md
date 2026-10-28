@@ -61,10 +61,17 @@ Canlıya geçmeden önce HTTPS, PostgreSQL, yedekleme/geri yükleme, oturum güv
 
 İleride canlı çalışma için `collectstatic` sonrasında `gunicorn config.wsgi:application` kullanılabilir. Statik dosyaları WhiteNoise sunar. HTTPS yönlendirme ve ters vekil güven ayarları seçilen bulut sağlayıcısına göre ayrıca yapılandırılmalıdır; şu anda dağıtım yapılmaz.
 
-İlk sürüm kapsamı: kayıt ekleme/düzenleme/listeleme, arama, sayfalama ve yetkiler. Muhasebe, fatura/e-belge, KDV hesabı, stok rezervasyonu, otomatik sevkiyat, malzeme reçetesi ve üretim iş emri henüz yoktur. Kullanıcı işlemleri için kapsamlı denetim günlüğü yoktur; stok hareketlerinde kaydeden kullanıcı ve tarih tutulur. Telefon düzeni CSS ile hazırlanmıştır; gerçek cihaz/tarayıcı testi yapılmamıştır.
+İlk sürüm kapsamı: kayıt ekleme/düzenleme/listeleme, arama, sayfalama ve yetkiler. Muhasebe, fatura/e-belge, KDV hesabı, stok rezervasyonu, otomatik stok tüketimi ve otomatik sevkiyat henüz yoktur. Excel reçeteleri ve üretim iş emirleri aşağıdaki bölümde açıklanmıştır. Kullanıcı işlemleri için kapsamlı denetim günlüğü yoktur; stok hareketlerinde kaydeden kullanıcı ve tarih tutulur. Telefon düzeni CSS ile hazırlanmıştır; gerçek cihaz/tarayıcı testi yapılmamıştır.
 
 ## Verileri koruma ve GitHub
 
 `db.sqlite3`, `.local-secret`, `.venv` ve parolalar `.gitignore` ile depodan hariç tutulur. Veri tabanını dosyaları listeleyen bir herkese açık sunucuyla sunmayın. Verileri silen `flush`, sıfırlama veya veri tabanı dosyasını silme komutlarını kullanmayın. Güncelleme öncesi yedek alın. SQLite yedeğini uygulama kapalıyken güvenli bir konuma kopyalayabilirsiniz; çalışan uygulama için SQLite'ın çevrimiçi yedekleme yöntemini kullanın. PostgreSQL için sağlayıcının otomatik yedeğini ve `pg_dump` yöntemini kullanın; geri yüklemeyi ayrıca deneyin.
 
 Kodun GitHub deposu: [Kuraldok/yeni-erp](https://github.com/Kuraldok/yeni-erp). Kaynak kodu ve şema değişiklikleri Git ile sürümlenir; gerçek veri tabanı, gizli anahtarlar ve yerel paketler GitHub'a gönderilmez. GitHub'a kod kaydetmek uygulamayı internete yayımlamaz. Veri modeli ve teknik kararlar: [docs/teknik-yapi.md](docs/teknik-yapi.md).
+
+
+## Ahşap / döküm üretimi ve Excel reçeteleri
+
+Ürün ve hammadde listeleri Excel'den boş alanları doldurmadan aktarılabilir. Menüye **Excel aktarımları**, **Ürün reçeteleri**, **Reçete satırları ve eksikler**, **Standart üretim akışları** ve **Üretim iş emirleri** eklendi. Standart akışlar ahşap ve döküm üretimini, gerektiğinde montajı, paketlemeyi ve teslimata hazırlığı kapsar.
+
+İhtiyaç hesabı, iş emri açma ve eksik verilerin incelenmesi için [Üretim ve Excel kullanım rehberini](docs/uretim-ve-excel.md) okuyun. Üretim miktarları stokları otomatik değiştirmez. Yeni veri tabanı tabloları mevcut kayıtlar silinmeden `scripts/setup.sh` ile kurulur. İlk yönetici hesabınız yoksa yukarıdaki `createsuperuser` adımını kullanın.

@@ -8,10 +8,13 @@ from django.db.models import Sum, Q
 POSITIVE = MinValueValidator(Decimal('0.001'))
 
 class Product(models.Model):
-    code = models.CharField('Ürün kodu', max_length=40, unique=True)
-    name = models.CharField('Ürün adı', max_length=160)
-    unit = models.CharField('Birim', max_length=12, choices=[('adet','Adet'),('kg','Kilogram'),('m','Metre'),('lt','Litre')], default='adet')
-    minimum_stock = models.DecimalField('Asgari stok', max_digits=14, decimal_places=3, default=0, validators=[MinValueValidator(0)])
+    code = models.CharField('Ürün kodu', max_length=100, unique=True)
+    name = models.CharField('Ürün adı', max_length=200, blank=True)
+    unit = models.CharField('Birim', max_length=12, choices=[('adet','Adet'),('kg','Kilogram'),('m','Metre'),('lt','Litre')], default='adet', blank=True)
+    minimum_stock = models.DecimalField('Asgari stok', max_digits=14, decimal_places=3, default=0, null=True, blank=True, validators=[MinValueValidator(0)])
+    kind = models.CharField('Kart türü', max_length=12, blank=True, choices=[('finished','Mamul'),('semi','Yarı mamul'),('raw','Hammadde'),('part','Parça')])
+    production_area = models.CharField('Üretim alanı', max_length=10, blank=True, choices=[('wood','Ahşap'),('casting','Döküm')])
+    category = models.CharField('Ürün grubu', max_length=100, blank=True)
     active = models.BooleanField('Aktif', default=True)
     class Meta:
         ordering = ['code']
@@ -46,6 +49,9 @@ class StockMovement(models.Model):
         verbose_name_plural = 'Stok hareketleri'
         constraints = [models.CheckConstraint(condition=Q(quantity__gt=0), name='positive_stock_quantity')]
     def __str__(self): return f'{self.product.code} · {self.get_kind_display()} · {self.quantity}'
+    def clean(self):
+        if self.product_id and not self.product.unit:
+            raise ValidationError({'product':'Ürün kartında ölçü birimi boş. Stok hareketinden önce birimi açıkça tanımlayın.'})
     def save(self, *args, **kwargs):
         if not self._state.adding:
             raise ValidationError('Stok hareketi değiştirilemez. Düzeltme için ters hareket girin.')
@@ -131,7 +137,7 @@ class RouteStep(models.Model):
     sequence = models.PositiveIntegerField('Sıra', validators=[MinValueValidator(1)])
     name = models.CharField('Operasyon', max_length=160)
     workstation = models.CharField('İş istasyonu', max_length=100)
-    duration_minutes = models.DecimalField('Süre (dakika)', max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    duration_minutes = models.DecimalField('Süre (dakika)', max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
     instructions = models.TextField('Talimat', blank=True)
     class Meta:
         ordering = ['route','sequence']
@@ -139,3 +145,128 @@ class RouteStep(models.Model):
         verbose_name_plural = 'Rota adımları'
         constraints = [models.UniqueConstraint(fields=['route','sequence'], name='unique_route_sequence')]
     def __str__(self): return f'{self.route} · {self.sequence}. {self.name}'
+
+class CatalogImport(models.Model):
+    filename = models.CharField('Dosya', max_length=240)
+    checksum = models.CharField('Dosya özeti', max_length=64, unique=True)
+    created_at = models.DateTimeField('Aktarım tarihi', auto_now_add=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, editable=False)
+    summary = models.JSONField('Aktarım özeti', default=dict)
+    class Meta:
+        ordering = ['-pk']
+        verbose_name = 'Excel aktarımı'
+        verbose_name_plural = 'Excel aktarımları'
+    def __str__(self): return self.filename
+
+class MaterialRecipe(models.Model):
+    source = models.ForeignKey(CatalogImport, on_delete=models.PROTECT, verbose_name='Excel aktarımı')
+    sheet = models.CharField('Excel sayfası', max_length=100)
+    parent_code = models.CharField('Üst ürün kodu', max_length=100)
+    parent_name = models.CharField('Üst ürün adı', max_length=200, blank=True)
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Ürün kartı')
+    issues = models.JSONField('İnceleme notları', default=list)
+    class Meta:
+        ordering = ['sheet','parent_code','pk']
+        verbose_name = 'Ürün reçetesi'
+        verbose_name_plural = 'Ürün reçeteleri'
+        constraints = [models.UniqueConstraint(fields=['source','sheet','parent_code','parent_name'], name='unique_source_recipe')]
+    def __str__(self): return f'{self.parent_code} · {self.parent_name} ({self.sheet})'
+
+class MaterialRequirement(models.Model):
+    source = models.ForeignKey(CatalogImport, on_delete=models.PROTECT, verbose_name='Excel aktarımı')
+    recipe = models.ForeignKey(MaterialRecipe, on_delete=models.PROTECT, null=True, related_name='lines', verbose_name='Ürün reçetesi')
+    sheet = models.CharField('Sayfa', max_length=100)
+    row_number = models.PositiveIntegerField('Excel satırı')
+    parent_code = models.CharField('Üst ürün kodu', max_length=100, blank=True)
+    component_code = models.CharField('Bileşen kodu', max_length=100, blank=True)
+    component_name = models.CharField('Bileşen adı', max_length=200, blank=True)
+    component_kind = models.CharField('Bileşen türü', max_length=40, blank=True)
+    quantity = models.DecimalField('Bir üst ürün için ihtiyaç', max_digits=24, decimal_places=12, null=True, blank=True, validators=[MinValueValidator(0)])
+    unit = models.CharField('Ölçü birimi', max_length=30, blank=True)
+    component = models.ForeignKey(Product, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Bileşen kartı')
+    raw = models.JSONField('Excel değerleri', default=dict)
+    formulas = models.JSONField('Kaynak formüller', default=dict)
+    issues = models.JSONField('İnceleme notları', default=list)
+    class Meta:
+        ordering = ['sheet','row_number']
+        verbose_name = 'Reçete satırı'
+        verbose_name_plural = 'Reçete satırları'
+        constraints = [models.UniqueConstraint(fields=['source','sheet','row_number'], name='unique_import_row')]
+    def __str__(self): return f'{self.sheet}:{self.row_number} · {self.component_code or self.component_name}'
+
+class ProductionFlow(models.Model):
+    code = models.CharField('Akış kodu', max_length=30, unique=True)
+    name = models.CharField('Akış adı', max_length=120)
+    area = models.CharField('Alan', max_length=10, choices=[('wood','Ahşap'),('casting','Döküm'),('shared','Ortak bitirme')])
+    class Meta:
+        ordering = ['pk']
+        verbose_name = 'Standart üretim akışı'
+        verbose_name_plural = 'Standart üretim akışları'
+    def __str__(self): return self.name
+
+class ProductionFlowStep(models.Model):
+    flow = models.ForeignKey(ProductionFlow, on_delete=models.PROTECT, related_name='steps', verbose_name='Akış')
+    sequence = models.PositiveIntegerField('Sıra')
+    name = models.CharField('Aşama', max_length=160)
+    optional_assembly = models.BooleanField('İsteğe bağlı montaj', default=False)
+    duration_minutes = models.DecimalField('Süre (dakika)', max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    class Meta:
+        ordering = ['flow','sequence']
+        constraints = [models.UniqueConstraint(fields=['flow','sequence'], name='unique_flow_step')]
+        verbose_name = 'Standart akış adımı'
+        verbose_name_plural = 'Standart akış adımları'
+    def __str__(self): return f'{self.flow} · {self.sequence}. {self.name}'
+
+class ProductionJob(models.Model):
+    number = models.CharField('İş emri no', max_length=60, unique=True)
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, verbose_name='Üretilecek ürün / yarı mamul')
+    quantity = models.DecimalField('Üretim miktarı', max_digits=14, decimal_places=3, validators=[POSITIVE])
+    unit = models.CharField('Üretim birimi', max_length=12, choices=Product._meta.get_field('unit').choices)
+    flow = models.ForeignKey(ProductionFlow, on_delete=models.PROTECT, verbose_name='Üretim akışı')
+    recipe = models.ForeignKey(MaterialRecipe, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Malzeme reçetesi')
+    casting_material = models.CharField('Döküm hammaddesi', max_length=10, blank=True, choices=[('aluminium','Alüminyum Külçe'),('pig','Pik')])
+    assembly_required = models.BooleanField('Montaj gerekiyor mu?', null=True, blank=True)
+    preceding_jobs = models.ManyToManyField('self', symmetrical=False, blank=True, related_name='following_jobs', verbose_name='Önce tamamlanacak işler')
+    state = models.CharField('Durum', max_length=12, default='draft', choices=[('draft','Taslak'),('running','Üretimde'),('completed','Tamamlandı')], editable=False)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, editable=False)
+    created_at = models.DateTimeField('Oluşturma tarihi', auto_now_add=True)
+    note = models.TextField('Not', blank=True)
+    class Meta:
+        ordering = ['-pk']
+        verbose_name = 'Üretim iş emri'
+        verbose_name_plural = 'Üretim iş emirleri'
+        permissions = [('advance_productionjob','Üretim aşamasını ilerletebilir')]
+        constraints = [models.CheckConstraint(condition=Q(quantity__gt=0), name='positive_job_quantity')]
+    def __str__(self): return self.number
+    def clean(self):
+        if self.product_id and self.product.unit and self.unit!=self.product.unit:
+            raise ValidationError({'unit':'Üretim birimi ürün kartındaki birimle aynı olmalıdır.'})
+        if self.recipe_id and self.product_id and self.recipe.product_id != self.product_id:
+            raise ValidationError({'recipe':'Reçete seçilen ürün kartına bağlı olmalıdır.'})
+        if self.flow_id:
+            if self.flow.area=='casting' and not self.casting_material:
+                raise ValidationError({'casting_material':'Alüminyum Külçe veya Pik seçin; seçim otomatik yapılmaz.'})
+            if self.flow.area!='casting' and self.casting_material:
+                raise ValidationError({'casting_material':'Bu seçim yalnızca döküm akışında kullanılır.'})
+            if self.flow.area=='shared' and self.assembly_required is None:
+                raise ValidationError({'assembly_required':'Montaj gerekip gerekmediğini açıkça seçin.'})
+            if self.product_id and self.product.production_area and self.flow.area != 'shared' and self.product.production_area != self.flow.area:
+                raise ValidationError({'flow':'Akış ürünün tanımlı üretim alanıyla uyuşmuyor.'})
+        if self.recipe_id and self.casting_material:
+            names = set(self.recipe.lines.filter(component_kind='Hammadde').values_list('component_name',flat=True))
+            selected = 'Alüminyum Külçe' if self.casting_material=='aluminium' else 'Pik'
+            if names and selected not in names:
+                raise ValidationError({'casting_material':'Seçilen hammadde bu Excel reçetesinde bulunmuyor.'})
+
+class ProductionJobStep(models.Model):
+    job = models.ForeignKey(ProductionJob, on_delete=models.PROTECT, related_name='steps', verbose_name='İş emri')
+    sequence = models.PositiveIntegerField('Sıra')
+    name = models.CharField('Aşama', max_length=160)
+    completed_at = models.DateTimeField('Tamamlanma tarihi', null=True, blank=True)
+    completed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Tamamlayan')
+    class Meta:
+        ordering = ['sequence']
+        constraints = [models.UniqueConstraint(fields=['job','sequence'], name='unique_job_step')]
+        verbose_name = 'İş emri aşaması'
+        verbose_name_plural = 'İş emri aşamaları'
+    def __str__(self): return f'{self.job} · {self.sequence}. {self.name}'

@@ -7,7 +7,7 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase, Client
 from django.urls import reverse
 from .models import Product, Warehouse, StockMovement, Partner, Order, OrderLine, ProductionRoute, RouteStep, stock_balance
-from .registry import MODULES
+from .registry import MODULES, READ_ONLY_MODELS
 
 class ERPTests(TestCase):
     @classmethod
@@ -43,7 +43,8 @@ class ERPTests(TestCase):
         for slug in MODULES:
             with self.subTest(slug=slug):
                 self.assertEqual(self.client.get(reverse('listing',args=[slug])).status_code,200)
-                self.assertEqual(self.client.get(reverse('create',args=[slug])).status_code,200)
+                expected=403 if MODULES[slug][0] in READ_ONLY_MODELS else 200
+                self.assertEqual(self.client.get(reverse('create',args=[slug])).status_code,expected)
         self.assertContains(self.client.get('/'), 'Ana kontrol paneli')
 
     def test_viewer_cannot_write_even_direct_post(self):
