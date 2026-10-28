@@ -164,3 +164,41 @@ class ProductScreenTests(TestCase):
         self.assertNotContains(response, 'Yeni ERP')
         self.client.logout()
         self.assertContains(self.client.get(reverse('login')), 'Kural Döküm')
+
+    def test_requirement_display_uses_unit_precision_without_changing_data(self):
+        recipe = MaterialRecipe.objects.get(source=self.batch, product=self.parent)
+        precise = Decimal('12.345678901234')
+        line = MaterialRequirement.objects.create(
+            source=self.batch, recipe=recipe, sheet='Banklar', row_number=999,
+            parent_code=self.parent.code, component_code='R-EXTRA',
+            component_name='İnce hammadde', component_kind='Hammadde',
+            quantity=precise, unit='KG', raw={'Birim İhtiyacı': str(precise)},
+        )
+        response = self.client.get(reverse('product_detail', args=[self.parent.pk]))
+        self.assertContains(response, '<td>2</td><td>Adet</td>')
+        self.assertContains(response, '<td>12,346</td><td>KG</td>')
+        self.assertContains(response, '<td>—</td><td>KG</td>')
+        self.assertNotContains(response, '12,345678901234')
+        line.refresh_from_db()
+        self.assertEqual(line.quantity, precise)
+        self.assertEqual(line.raw['Birim İhtiyacı'], str(precise))
+        line.quantity = Decimal('7')
+        line.save(update_fields=['quantity'])
+        response = self.client.get(reverse('product_detail', args=[self.parent.pk]))
+        self.assertContains(response, '<td>7,000</td><td>KG</td>')
+        recipe_response = self.client.get(reverse('recipe_detail', args=[recipe.pk]))
+        self.assertContains(recipe_response, '<td>7,000</td><td>7,000</td><td>KG</td>')
+
+    def test_dashboard_product_count_matches_main_product_list(self):
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(dict(response.context['stats'])['Ürün'], 4)
+        self.assertGreater(Product.objects.count(), 4)
+        listed_count = self.client.get(self.url).context['page'].paginator.count
+        self.assertEqual(dict(response.context['stats'])['Ürün'], listed_count)
+
+    def test_dashboard_count_does_not_double_count_recipe_versions_or_exclude_inactive_main(self):
+        import_catalog(catalog_file(5), 'new-version.xlsx')
+        self.manual.active = False
+        self.manual.save(update_fields=['active'])
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(dict(response.context['stats'])['Ürün'], 4)

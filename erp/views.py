@@ -18,7 +18,8 @@ def dashboard(request):
     stats = []
     for model, title in [(Product,'Ürün'),(Partner,'Müşteri / tedarikçi'),(Order,'Sipariş'),(StockMovement,'Stok hareketi')]:
         if request.user.has_perm(f'erp.view_{model._meta.model_name}'):
-            stats.append((title, model.objects.count()))
+            count = main_products().count() if model is Product else model.objects.count()
+            stats.append((title, count))
     balances = []
     if request.user.has_perm('erp.view_stockmovement') and request.user.has_perm('erp.view_product'):
         for product in Product.objects.filter(active=True)[:50]:
