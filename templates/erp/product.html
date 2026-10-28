@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}{{ product.code }} · Kural Döküm{% endblock %}
+{% block content %}
+<a href="{% url 'listing' 'urunler' %}">← Ürün kartları</a>
+<div class="page-heading"><div><p class="eyebrow">ANA ÜRÜN</p><h1>{{ product.name|default:product.code }}</h1><p class="muted">{{ product.code }}</p></div>{% if perms.erp.change_product %}<a class="button secondary" href="{% url 'edit' 'urunler' product.pk %}">Ürün kartını düzenle</a>{% endif %}</div>
+<nav class="product-tabs" aria-label="Ürün ayrıntı sekmeleri">
+  <a href="?tab=overview{% if selected_recipe %}&amp;recipe={{ selected_recipe.pk }}{% endif %}" {% if tab == 'overview' %}aria-current="page"{% endif %}>Ürün bilgileri</a>
+  {% if can_view_components %}<a href="?tab=components{% if selected_recipe %}&amp;recipe={{ selected_recipe.pk }}{% endif %}" {% if tab == 'components' %}aria-current="page"{% endif %}>Yarı mamuller ve hammaddeler</a>{% endif %}
+</nav>
+{% if tab == 'overview' %}
+<section class="panel"><h2>Ürün bilgileri</h2><dl class="product-facts">
+  <div><dt>Ürün kodu</dt><dd>{{ product.code }}</dd></div><div><dt>Ürün adı</dt><dd>{{ product.name|default:'—' }}</dd></div>
+  <div><dt>Ürün grubu</dt><dd>{{ display_group }}</dd></div><div><dt>Üretim alanı</dt><dd>{{ product.get_production_area_display|default:'—' }}</dd></div>
+  <div><dt>Birim</dt><dd>{{ product.get_unit_display|default:'—' }}</dd></div><div><dt>Asgari stok</dt><dd>{{ product.minimum_stock|default_if_none:'—' }}</dd></div>
+  <div><dt>Aktif</dt><dd>{{ product.active|yesno:'Evet,Hayır' }}</dd></div>
+</dl></section>
+{% else %}
+{% if recipes %}
+<section class="panel">
+  <form method="get" class="search"><input type="hidden" name="tab" value="components"><label for="recipe">Reçete / kaynak sürümü</label><div class="filters"><select name="recipe" id="recipe">{% for recipe in recipes %}<option value="{{ recipe.pk }}" {% if recipe.pk == selected_recipe.pk %}selected{% endif %}>{{ recipe.sheet }} · {{ recipe.parent_code }} · {{ recipe.source.filename }} · {{ recipe.source.created_at|date:'d.m.Y H:i' }}</option>{% endfor %}</select><button class="button secondary">Göster</button></div></form>
+  <p class="hint">Miktarlar bir ana ürün için Excel'de belirtilen ihtiyaçtır. Boş alanlar “—” ile gösterilir. Reçete sürümleri birleştirilmez.</p>
+  <a href="{% url 'recipe_detail' selected_recipe.pk %}">Üretim miktarına göre ihtiyaç hesapla →</a>
+  {% for issue in selected_recipe.issues %}<p class="notice">{{ issue }}</p>{% endfor %}
+</section>
+{% for section in sections %}
+<section class="panel"><h2>{{ section.title }}</h2><div class="table-wrap"><table>
+  <thead><tr><th>Kod</th><th>Ad</th><th>Tür</th><th>Birim ihtiyaç</th><th>Ölçü birimi</th><th>Üretim alanı</th><th>Kaynak satırı</th><th>İnceleme</th></tr></thead>
+  <tbody>{% for row in section.rows %}<tr>
+    <td>{{ row.line.component_code|default:'—' }}</td><td>{{ row.line.component_name|default:'—' }}</td><td>{{ row.line.component_kind|default:'—' }}</td>
+    <td>{{ row.line.quantity|default_if_none:'—' }}</td><td>{{ row.line.unit|default:'—' }}</td><td>{{ row.line.component.get_production_area_display|default:'—' }}</td><td>{{ row.line.sheet }}:{{ row.line.row_number }}</td>
+    <td class="wrap">{% for issue in row.issues %}<small>{{ issue }}</small>{% empty %}<span class="badge success">Bilgi tam</span>{% endfor %}</td>
+  </tr>{% empty %}<tr><td colspan="8" class="empty">Bu reçetede {{ section.title|lower }} için kayıt bulunmuyor.</td></tr>{% endfor %}</tbody>
+</table></div></section>
+{% endfor %}
+{% else %}<section class="panel"><h2>Yarı mamuller ve hammaddeler</h2><p>Bu ana ürün için henüz reçete kaydı yok.</p></section>{% endif %}
+{% endif %}
+{% endblock %}

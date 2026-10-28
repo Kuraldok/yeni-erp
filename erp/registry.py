@@ -1,6 +1,6 @@
 from .models import Product, Warehouse, StockMovement, Partner, Order, OrderLine, ProductionRoute, RouteStep, CatalogImport, MaterialRecipe, MaterialRequirement, ProductionFlow, ProductionFlowStep, ProductionJob, ProductionJobStep
 MODULES = {
-    'urunler': (Product, 'Ürün kartları', ['code','name','kind','production_area','category','unit','minimum_stock','active']),
+    'urunler': (Product, 'Ürün kartları', ['code','name','category','production_area','unit','minimum_stock','active']),
     'depolar': (Warehouse, 'Depolar', ['name']),
     'stok': (StockMovement, 'Stok hareketleri', ['product','warehouse','kind','quantity','note','created_by','created_at']),
     'cariler': (Partner, 'Müşteri ve tedarikçiler', ['name','kind','phone','email']),

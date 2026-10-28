@@ -3,14 +3,15 @@ from django.contrib.auth import views as auth_views
 from django.urls import path
 from erp import views
 
-admin.site.site_header = 'Yeni ERP • Kullanıcı ve yetki yönetimi'
-admin.site.site_title = 'Yeni ERP'
+admin.site.site_header = 'Kural Döküm • Kullanıcı ve yetki yönetimi'
+admin.site.site_title = 'Kural Döküm'
 admin.site.index_title = 'Yönetim'
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('giris/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('cikis/', auth_views.LogoutView.as_view(), name='logout'),
     path('yonetim/', admin.site.urls),
+    path('urun/<int:pk>/', views.product_detail, name='product_detail'),
     path('excel-aktar/', views.catalog_upload, name='catalog_upload'),
     path('excel-aktarim/<int:pk>/', views.catalog_report, name='catalog_report'),
     path('recete/<int:pk>/', views.recipe_detail, name='recipe_detail'),

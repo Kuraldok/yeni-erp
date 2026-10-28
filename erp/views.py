@@ -11,6 +11,7 @@ from django.http import Http404
 from django.urls import reverse
 from .models import Product, Partner, Order, StockMovement, ProductionJob, MaterialRecipe, stock_balance
 from .registry import MODULES, READ_ONLY_MODELS
+from .products import main_products, product_groups, filter_group
 
 @login_required
 def dashboard(request):
@@ -41,6 +42,13 @@ def listing(request, slug):
     model, title, fields = module(slug)
     if not permitted(request.user,'view',model): raise PermissionDenied
     qs = model.objects.all()
+    groups = []
+    category = ''
+    if model is Product:
+        qs = main_products()
+        groups = product_groups(qs)
+        category = request.GET.get('category', '').strip()
+        qs = filter_group(qs, category).prefetch_related('materialrecipe_set')
     search = request.GET.get('q','').strip()
     if search:
         condition = Q()
@@ -61,15 +69,64 @@ def listing(request, slug):
         values = []
         for field in fields:
             value = getattr(obj, f'get_{field}_display', lambda: getattr(obj, field))()
+            if model is Product and field == 'category':
+                names = {r.sheet for r in obj.materialrecipe_set.all() if r.sheet}
+                if obj.category:
+                    names.add(obj.category)
+                value = ', '.join(sorted(names)) or '—'
             if isinstance(value, bool): value = 'Evet' if value else 'Hayır'
             if isinstance(value,list): value = ' · '.join(str(v) for v in value) if value else 'İnceleme notu yok'
             if isinstance(value,dict): value = f"{value.get('rows',0)} satır · {value.get('rows_with_issues',0)} inceleme"
             values.append(value)
-        detail_names={'receteler':'recipe_detail','excel-aktarimlari':'catalog_report','uretim-akislari':'flow_detail','uretim-isleri':'production_job'}
+        detail_names={'urunler':'product_detail','receteler':'recipe_detail','excel-aktarimlari':'catalog_report','uretim-akislari':'flow_detail','uretim-isleri':'production_job'}
         detail=reverse(detail_names[slug],args=[obj.pk]) if slug in detail_names else ''
         editable=model is not ProductionJob or obj.state=='draft'
-        rows.append({'pk':obj.pk, 'values':values,'detail':detail,'editable':editable})
-    return render(request,'erp/list.html', {'title':title,'slug':slug,'has_detail':slug in ['receteler','excel-aktarimlari','uretim-akislari','uretim-isleri'],'headers':headers,'rows':rows,'page':page,'q':search,'can_add':model not in READ_ONLY_MODELS and permitted(request.user,'add',model),'can_edit':model not in READ_ONLY_MODELS and model is not StockMovement and permitted(request.user,'change',model)})
+        rows.append({'pk':obj.pk, 'values':values,'detail':detail,'editable':editable,'product_detail':detail if model is Product else ''})
+    return render(request,'erp/list.html', {'title':title,'slug':slug,'has_detail':slug in ['urunler','receteler','excel-aktarimlari','uretim-akislari','uretim-isleri'],'headers':headers,'rows':rows,'page':page,'q':search,'groups':groups,'category':category,'can_add':model not in READ_ONLY_MODELS and permitted(request.user,'add',model),'can_edit':model not in READ_ONLY_MODELS and model is not StockMovement and permitted(request.user,'change',model)})
+
+
+@login_required
+def product_detail(request, pk):
+    if not request.user.has_perm('erp.view_product'):
+        raise PermissionDenied
+    product = get_object_or_404(main_products().prefetch_related('materialrecipe_set'), pk=pk)
+    group_names = {r.sheet for r in product.materialrecipe_set.all() if r.sheet}
+    if product.category:
+        group_names.add(product.category)
+    can_view_components = all(request.user.has_perm('erp.' + permission) for permission in (
+        'view_materialrecipe', 'view_materialrequirement',
+    ))
+    tab = request.GET.get('tab', 'components' if can_view_components else 'overview')
+    if tab not in ('overview', 'components'):
+        raise Http404
+    if tab == 'components' and not can_view_components:
+        raise PermissionDenied
+    recipes = []
+    selected_recipe = None
+    sections = []
+    if can_view_components:
+        recipes = list(MaterialRecipe.objects.filter(product=product).select_related('source').order_by('-source_id', 'sheet', 'pk'))
+        selected = request.GET.get('recipe', '')
+        if selected:
+            selected_recipe = next((r for r in recipes if str(r.pk) == selected), None)
+            if selected_recipe is None:
+                raise Http404
+        elif recipes:
+            selected_recipe = recipes[0]
+        if selected_recipe and tab == 'components':
+            from decimal import Decimal
+            from .production import material_plan
+            rows, _ = material_plan(selected_recipe, Decimal('1'))
+            sections = [
+                {'title': 'Yarı mamuller', 'rows': [r for r in rows if r['line'].component_kind == 'Yarı Mamul']},
+                {'title': 'Hammaddeler', 'rows': [r for r in rows if r['line'].component_kind == 'Hammadde']},
+                {'title': 'Diğer bileşenler', 'rows': [r for r in rows if r['line'].component_kind not in ('Yarı Mamul', 'Hammadde')]},
+            ]
+    return render(request, 'erp/product.html', {
+        'product': product, 'tab': tab, 'can_view_components': can_view_components,
+        'recipes': recipes, 'selected_recipe': selected_recipe, 'sections': sections,
+        'slug': 'urunler', 'display_group': ', '.join(sorted(group_names)) or '—',
+    })
 
 @login_required
 @transaction.atomic

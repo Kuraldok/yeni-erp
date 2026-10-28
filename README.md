@@ -75,3 +75,12 @@ Kodun GitHub deposu: [Kuraldok/yeni-erp](https://github.com/Kuraldok/yeni-erp). 
 Ürün ve hammadde listeleri Excel'den boş alanları doldurmadan aktarılabilir. Menüye **Excel aktarımları**, **Ürün reçeteleri**, **Reçete satırları ve eksikler**, **Standart üretim akışları** ve **Üretim iş emirleri** eklendi. Standart akışlar ahşap ve döküm üretimini, gerektiğinde montajı, paketlemeyi ve teslimata hazırlığı kapsar.
 
 İhtiyaç hesabı, iş emri açma ve eksik verilerin incelenmesi için [Üretim ve Excel kullanım rehberini](docs/uretim-ve-excel.md) okuyun. Üretim miktarları stokları otomatik değiştirmez. Yeni veri tabanı tabloları mevcut kayıtlar silinmeden `scripts/setup.sh` ile kurulur. İlk yönetici hesabınız yoksa yukarıdaki `createsuperuser` adımını kullanın.
+
+
+## Ürün kartları ve ürün grupları
+
+Arayüz başlığı **Kural Döküm** olarak kullanılır. **Ürün kartları** listesinde ana ürünler görünür. Ürün grubu seçip **Filtrele** düğmesine basabilirsiniz; metin araması aynı anda kullanılabilir ve sayfa değiştirirken filtreler korunur. Grubu boş olan kayıtlar için **Grubu belirtilmeyenler** seçeneği vardır.
+
+Ana ürünün koduna, adına veya **Ayrıntılar** bağlantısına tıkladığınızda yeni tarayıcı sekmesi açılır. Burada **Ürün bilgileri** ve **Yarı mamuller ve hammaddeler** sekmeleri bulunur. Bileşenlerin kodu, adı, birim ihtiyacı, ölçü birimi, biliniyorsa üretim alanı, kaynak satırı ve inceleme notları gösterilir. Kaynakta Mamul/Parça gibi diğer türde verilen bileşenler ayrı bölümde korunur. Birden fazla reçete sürümü varsa kaynak seçilir; farklı sürümlerin miktarları birleştirilmez.
+
+Ana ürün görünümü mevcut üst ürün ilişkilerinden belirlenir; yarı mamul, hammadde ve parça kartları ana listede gösterilmez. Henüz reçetesi olmayan elle açılmış mamul/sınıflandırılmamış bağımsız kartlar görünmeye devam eder. Liste değişikliği stok, kart veya reçete kayıtlarını silmez; bileşen ayrıntıları için mevcut reçete görüntüleme izinleri geçerlidir.
