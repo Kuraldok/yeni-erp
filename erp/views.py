@@ -13,7 +13,9 @@ from .models import Product, Partner, Order, OrderLine, StockMovement, Productio
 from .registry import MODULES, READ_ONLY_MODELS
 from .products import main_products, order_product_cards
 from .group_filters import available_groups, can_filter_groups, filter_by_group
-from .templatetags.erp_numbers import requirement_list_amount
+from .templatetags.erp_numbers import requirement_list_amount, count_amount
+from .models import ConsumptionRecipe, ConsumptionRecipeLine, AuditEvent, QuantityReview, ProductionPosting
+from .quantities import is_count_unit, quantity_fields
 
 @login_required
 def dashboard(request):
@@ -52,6 +54,9 @@ def listing(request, slug):
     model, title, fields = module(slug)
     if not permitted(request.user,'view',model): raise PermissionDenied
     qs = model.objects.all()
+    if model is QuantityReview:
+        permitted_labels = [item[0]._meta.label_lower for item in MODULES.values() if request.user.has_perm(f'erp.view_{item[0]._meta.model_name}')]
+        qs = qs.filter(model_label__in=permitted_labels)
     category = request.GET.get('category', '').strip()
     can_filter = can_filter_groups(request.user, model)
     groups = available_groups(request.user) if can_filter else []
@@ -69,6 +74,12 @@ def listing(request, slug):
         qs = qs.filter(order_id=order_id) if order_id is not None else qs.none()
         order_filter = str(order_id) if order_id is not None else request.GET['order'][:19]
         selected_order = Order.objects.filter(pk=order_id).first() if order_id is not None else None
+    recipe_filter = ''
+    if model is ConsumptionRecipeLine and request.GET.get('recipe'):
+        from .orders import selection_pk
+        recipe_id = selection_pk(request.GET['recipe'])
+        qs = qs.filter(recipe_id=recipe_id) if recipe_id is not None else qs.none()
+        recipe_filter = str(recipe_id) if recipe_id else ''
     search = request.GET.get('q','').strip()
     if search:
         condition = Q()
@@ -90,8 +101,11 @@ def listing(request, slug):
     rows = []
     for obj in page:
         values = []
+        quantity_units = {field:unit for field, _, unit in quantity_fields(obj)}
         for field in fields:
             value = getattr(obj, f'get_{field}_display', lambda: getattr(obj, field))()
+            if field in quantity_units:
+                value = count_amount(value, quantity_units[field])
             if model is MaterialRequirement:
                 if field == 'quantity':
                     value = requirement_list_amount(obj.quantity, obj.unit)
@@ -107,13 +121,18 @@ def listing(request, slug):
             if isinstance(value,list): value = ' · '.join(str(v) for v in value) if value else 'İnceleme notu yok'
             if isinstance(value,dict): value = f"{value.get('rows',0)} satır · {value.get('rows_with_issues',0)} inceleme"
             values.append(value)
-        detail_names={'urunler':'product_detail','rotalar':'route_detail','receteler':'recipe_detail','excel-aktarimlari':'catalog_report','uretim-akislari':'flow_detail','uretim-isleri':'production_job'}
+        detail_names={'urunler':'product_detail','rotalar':'route_detail','receteler':'recipe_detail','excel-aktarimlari':'catalog_report','uretim-akislari':'flow_detail','uretim-isleri':'production_job','tuketim-receteleri':'consumption_recipe_detail','islem-gecmisi':'audit_detail','uretim-stok-fisleri':'production_posting_detail'}
         detail=reverse(detail_names[slug],args=[obj.pk]) if slug in detail_names else ''
         editable=model is not ProductionJob or obj.state=='draft'
         if model is OrderLine:
-            editable=obj.order.status=='draft'
-        rows.append({'pk':obj.pk, 'values':values,'detail':detail,'editable':editable,'product_detail':detail if model is Product else ''})
-    return render(request,'erp/list.html', {'title':title,'slug':slug,'has_detail':slug in ['urunler','rotalar','receteler','excel-aktarimlari','uretim-akislari','uretim-isleri'],'headers':headers,'rows':rows,'page':page,'q':search,'groups':groups,'category':category,'can_filter_groups':can_filter,'order_filter':order_filter,'selected_order':selected_order,'can_add':model not in READ_ONLY_MODELS and permitted(request.user,'add',model),'can_edit':model not in READ_ONLY_MODELS and model is not StockMovement and permitted(request.user,'change',model)})
+            editable=obj.order.status=='draft' and obj.status=='active'
+        if model is ConsumptionRecipe:
+            editable=not obj.locked
+        if model is ConsumptionRecipeLine:
+            editable=not obj.recipe.locked
+        cancel_url = reverse('cancel_order_line',args=[obj.pk]) if model is OrderLine and editable and request.user.has_perm('erp.cancel_orderline') else ''
+        rows.append({'pk':obj.pk, 'values':values,'detail':detail,'editable':editable,'cancel_url':cancel_url,'product_detail':detail if model is Product else ''})
+    return render(request,'erp/list.html', {'title':title,'slug':slug,'has_detail':slug in ['urunler','rotalar','receteler','excel-aktarimlari','uretim-akislari','uretim-isleri','tuketim-receteleri','islem-gecmisi','uretim-stok-fisleri'],'headers':headers,'rows':rows,'page':page,'q':search,'groups':groups,'category':category,'can_filter_groups':can_filter,'order_filter':order_filter,'selected_order':selected_order,'recipe_filter':recipe_filter,'can_cancel':model is OrderLine and request.user.has_perm('erp.cancel_orderline'),'can_add':model not in READ_ONLY_MODELS and permitted(request.user,'add',model),'can_edit':model not in READ_ONLY_MODELS and model is not StockMovement and permitted(request.user,'change',model)})
 
 
 @login_required
@@ -178,12 +197,32 @@ def edit(request, slug, pk=None):
     if model is StockMovement and pk is not None: raise PermissionDenied
     action = 'change' if pk is not None else 'add'
     if not permitted(request.user,action,model): raise PermissionDenied
-    queryset=model.objects.select_for_update() if model is ProductionJob else model.objects.all()
+    queryset=model.objects.select_for_update() if model in (ProductionJob,Product,ConsumptionRecipe) else model.objects.all()
     obj = get_object_or_404(queryset,pk=pk) if pk is not None else model()
     if model is ProductionJob and pk is not None and obj.state!='draft':
         raise PermissionDenied('Başlatılmış iş emrinin tanımı değiştirilemez.')
+    if model is ConsumptionRecipe and pk is not None and obj.locked:
+        raise PermissionDenied('Kullanılmış reçete için yeni sürüm oluşturun.')
+    if model is ConsumptionRecipeLine and pk is not None and obj.recipe.locked:
+        raise PermissionDenied('Kullanılmış reçetenin girdileri korunur.')
     Form = modelform_factory(model, exclude=['created_by','created_at'], widgets={'date':forms.DateInput(attrs={'type':'date'},format='%Y-%m-%d'),'due_date':forms.DateInput(attrs={'type':'date'},format='%Y-%m-%d')})
     initial = {}
+    if model is ConsumptionRecipe and pk is None and request.method == 'GET' and request.GET.get('product'):
+        from .orders import selection_pk
+        if not request.user.has_perm('erp.view_product'):
+            raise PermissionDenied
+        product = get_object_or_404(Product,pk=selection_pk(request.GET['product']))
+        from django.db.models import Max
+        version = (ConsumptionRecipe.objects.filter(product=product).aggregate(n=Max('version'))['n'] or 0)+1
+        initial={'product':product.pk,'unit':product.unit,'name':f'{product.code} · tüketim','version':version}
+    if model is ConsumptionRecipeLine and pk is None and request.method == 'GET' and request.GET.get('recipe'):
+        from .orders import selection_pk
+        if not request.user.has_perm('erp.view_consumptionrecipe'):
+            raise PermissionDenied
+        recipe = get_object_or_404(ConsumptionRecipe,pk=selection_pk(request.GET['recipe']))
+        if recipe.locked:
+            raise PermissionDenied('Kullanılmış reçetenin girdileri korunur.')
+        initial['recipe'] = recipe.pk
     if model is ProductionJob and request.method=='GET' and pk is None and request.GET.get('route'):
         if not all(request.user.has_perm('erp.'+p) for p in ['view_productionroute','view_product','view_productionflow']):
             raise PermissionDenied
@@ -202,6 +241,19 @@ def edit(request, slug, pk=None):
             field.queryset = field.queryset.none()
     if model is ProductionJob:
         form.fields['preceding_jobs'].queryset = form.fields['preceding_jobs'].queryset.exclude(pk=obj.pk)
+        if not request.user.has_perm('erp.track_production_without_stock') and (pk is None or obj.stock_mode != 'tracking'):
+            form.fields['stock_mode'].choices = [('inventory','Üretim ve stok')]
+    quantity_field = 'minimum_stock' if model is Product else 'quantity' if model in (StockMovement,ProductionJob,ConsumptionRecipeLine) else ''
+    product_units = {}
+    if model is StockMovement:
+        product_units = {str(pk):unit for pk,unit in form.fields['product'].queryset.values_list('pk','unit')}
+    if quantity_field:
+        unit = product_units.get(request.POST.get('product',''),'') if model is StockMovement else request.POST.get('unit','') if request.method == 'POST' else form.initial.get('unit','')
+        if is_count_unit(unit):
+            form.fields[quantity_field].widget.attrs.update(step='1',min='0' if quantity_field=='minimum_stock' else '1')
+            value = form.initial.get(quantity_field)
+            if value is not None and value == int(value):
+                form.initial[quantity_field] = int(value)
     if request.method == 'POST' and form.is_valid():
         record = form.save(commit=False)
         if model in (StockMovement,ProductionJob) and not pk: record.created_by = request.user
@@ -216,8 +268,10 @@ def edit(request, slug, pk=None):
         else:
             messages.success(request, 'Kayıt başarıyla kaydedildi.')
             if model is ProductionJob: return redirect('production_job',pk=record.pk)
+            if model is ConsumptionRecipe: return redirect('consumption_recipe_detail',pk=record.pk)
+            if model is ConsumptionRecipeLine: return redirect('consumption_recipe_detail',pk=record.recipe_id)
             return redirect('listing',slug=slug)
-    return render(request,'erp/form.html',{'form':form,'title':title,'slug':slug,'editing':pk is not None})
+    return render(request,'erp/form.html',{'form':form,'title':title,'slug':slug,'editing':pk is not None,'quantity_field':quantity_field,'product_units':product_units})
 
 
 class CatalogUploadForm(forms.Form):
@@ -281,6 +335,9 @@ def recipe_detail(request,pk):
     except (InvalidOperation,ValueError):
         quantity=None
         error='Pozitif, en fazla üç ondalıklı ve bir milyardan küçük bir üretim miktarı girin.'
+    if quantity is not None and recipe.product_id and is_count_unit(recipe.product.unit) and quantity != quantity.to_integral_value():
+        quantity=None
+        error='Adet birimindeki üretim miktarı tam sayı olmalıdır.'
     rows,problems=material_plan(recipe,quantity) if quantity is not None and matches_group else ([],[])
     return render(request,'erp/recipe.html',{'recipe':recipe,'quantity':quantity,'rows':rows,'problems':problems,'error':error,'groups':available_groups(request.user),'category':category,'can_filter_groups':True,'matches_group':matches_group})
 
@@ -304,19 +361,24 @@ def production_job(request,pk):
     from .production import advance_job,material_plan
     if not request.user.has_perm('erp.view_productionjob'):raise PermissionDenied
     job=get_object_or_404(ProductionJob.objects.select_related('flow','product','recipe'),pk=pk)
+    steps=list(job.steps.select_related('completed_by').all())
+    current=next((s for s in steps if not s.completed_at),None)
+    last_inventory_step=job.stock_mode=='inventory' and job.state=='running' and sum(s.completed_at is None for s in steps)==1
+    from .inventory_views import ProductionCompletionForm
+    completion_form=ProductionCompletionForm(request.POST if request.method=='POST' else None,unit=job.unit,initial={'actual_quantity':job.quantity}) if last_inventory_step else None
     if request.method=='POST':
         if not request.user.has_perm('erp.advance_productionjob'):raise PermissionDenied
+        if completion_form is not None and not completion_form.is_valid():
+            return render(request,'erp/job.html',{'job':job,'steps':steps,'current':current,'completion_form':completion_form,'stock_inputs':job.stock_inputs.select_related('product'),'rows':[],'problems':[]})
         try:
-            message=advance_job(job.pk,request.user,request.POST.get('expected',''))
+            message=advance_job(job.pk,request.user,request.POST.get('expected',''),actual_quantity=completion_form.cleaned_data['actual_quantity'] if completion_form is not None else None)
         except ValidationError as exc:
             for message in exc.messages:messages.error(request,message)
         except OperationalError:
             messages.error(request,'Veri tabanı meşgul; aşamanın durumunu kontrol edin.')
         else:messages.success(request,message)
         return redirect('production_job',pk=pk)
-    steps=list(job.steps.select_related('completed_by').all())
-    current=next((s for s in steps if not s.completed_at),None)
     rows,problems=([],[])
     if job.recipe_id and request.user.has_perm('erp.view_materialrequirement') and request.user.has_perm('erp.view_materialrecipe'):
         rows,problems=material_plan(job.recipe,job.quantity)
-    return render(request,'erp/job.html',{'job':job,'steps':steps,'current':current,'rows':rows,'problems':problems})
+    return render(request,'erp/job.html',{'job':job,'steps':steps,'current':current,'rows':rows,'problems':problems,'completion_form':completion_form,'stock_inputs':job.stock_inputs.select_related('product')})

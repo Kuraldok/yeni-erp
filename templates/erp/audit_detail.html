@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% block content %}
+<a class="back" href="{% url 'listing' 'islem-gecmisi' %}">← İşlem geçmişi</a>
+<h1>{{ event.get_action_display }} · {{ event.object_label }}</h1>
+<section class="panel"><p>{{ event.actor_label }} · {{ event.created_at|date:'d.m.Y H:i:s' }}</p><p>{{ event.model_label }} · Kayıt kimliği: {{ event.object_id }}</p>{% if event.reason %}<p>İşlem nedeni: {{ event.reason }}</p>{% endif %}
+<div class="table-wrap"><table><thead><tr><th>Alan</th><th>Önce</th><th>Sonra</th></tr></thead><tbody>{% for field,change in event.changes.items %}<tr><td>{{ field }}</td><td class="wrap">{{ change.before|default_if_none:'—' }}</td><td class="wrap">{{ change.after|default_if_none:'—' }}</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

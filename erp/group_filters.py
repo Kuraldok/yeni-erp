@@ -1,11 +1,13 @@
 """Product-group membership shared by lists, reports and dashboard summaries."""
 from django.core.exceptions import PermissionDenied
-from django.db.models import Q
+from django.db.models import Q, CharField
+from django.db.models.functions import Cast
 
 from .models import (
     CatalogImport, MaterialRecipe, MaterialRequirement, Order, OrderLine, Partner,
     Product, ProductionFlow, ProductionJob, ProductionRoute, RouteStep,
     StockMovement, Warehouse,
+    AuditEvent, QuantityReview, ConsumptionRecipe, ConsumptionRecipeLine, ProductionPosting,
 )
 
 
@@ -19,6 +21,8 @@ FILTER_PERMISSIONS = {
     ProductionJob: ('view_product',),
     ProductionFlow: ('view_product', 'view_productionroute', 'view_productionjob'),
     CatalogImport: ('view_materialrecipe', 'view_materialrequirement'),
+    ConsumptionRecipe: ('view_product',), ConsumptionRecipeLine: ('view_product','view_consumptionrecipe'),
+    ProductionPosting: ('view_product','view_productionjob'), AuditEvent: (), QuantityReview: (),
 }
 
 
@@ -61,7 +65,7 @@ def grouped_records(model, category=None):
     if model in (StockMovement, OrderLine, ProductionRoute, ProductionJob):
         return model.objects.filter(product__in=products)
     if model is Order:
-        return Order.objects.filter(pk__in=OrderLine.objects.filter(product__in=products).values('order_id'))
+        return Order.objects.filter(pk__in=OrderLine.objects.filter(product__in=products,status='active').values('order_id'))
     if model is Warehouse:
         return Warehouse.objects.filter(pk__in=StockMovement.objects.filter(product__in=products).values('warehouse_id'))
     if model is Partner:
@@ -78,6 +82,19 @@ def grouped_records(model, category=None):
             Q(pk__in=grouped_records(MaterialRecipe, category).values('source_id'))
             | Q(pk__in=grouped_records(MaterialRequirement, category).values('source_id'))
         )
+    if model is ConsumptionRecipe:
+        return model.objects.filter(product__in=products)
+    if model is ConsumptionRecipeLine:
+        return model.objects.filter(recipe__in=grouped_records(ConsumptionRecipe,category))
+    if model is ProductionPosting:
+        return model.objects.filter(job__in=grouped_records(ProductionJob,category))
+    if model in (AuditEvent,QuantityReview):
+        matches = Q(pk__in=[])
+        for target in (Product,Warehouse,StockMovement,Partner,Order,OrderLine,ProductionRoute,RouteStep,
+                MaterialRecipe,MaterialRequirement,CatalogImport,ProductionFlow,ProductionJob,ConsumptionRecipe,ConsumptionRecipeLine,ProductionPosting):
+            identities = grouped_records(target,category).annotate(identity=Cast('pk',CharField())).values('identity')
+            matches |= Q(model_label=target._meta.label_lower,object_id__in=identities)
+        return model.objects.filter(matches)
     raise ValueError(f'Unsupported group filter model: {model.__name__}')
 
 

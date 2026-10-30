@@ -1,10 +1,11 @@
+from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, OperationalError, transaction
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_http_methods
 
 from .models import Order, OrderLine
 from .order_forms import OrderForm, OrderLineForm, OrderLineFormSet
@@ -61,7 +62,7 @@ def edit_order(request, pk=None):
         # Validate lines against the locked draft, separately from the header's requested status.
         line_order = Order.objects.get(pk=pk) if pk is not None else Order()
         line_order.kind = kind
-        queryset = OrderLine.objects.select_for_update().filter(order_id=pk).order_by('pk') if pk is not None else OrderLine.objects.none()
+        queryset = OrderLine.objects.select_for_update().filter(order_id=pk,status='active').order_by('pk') if pk is not None else OrderLine.objects.none()
         formset = OrderLineFormSet(
             request.POST if has_lines else None, instance=line_order, queryset=queryset,
             prefix='lines', user=request.user,
@@ -101,7 +102,8 @@ def edit_order(request, pk=None):
             else:
                 messages.success(request, 'Sipariş ve kalemleri kaydedildi.' if has_lines else 'Sipariş kaydedildi.')
                 return redirect('listing', slug='siparisler')
-    existing_lines = order.lines.select_related('product').order_by('pk') if original_pk is not None and can_view_lines else []
+    existing_lines = order.lines.filter(status='active').select_related('product').order_by('pk') if original_pk is not None and can_view_lines else []
+    cancelled_lines = order.lines.filter(status='cancelled').select_related('product','cancelled_by') if original_pk is not None and can_view_lines else []
     selection = selection_context(request.user, kind) if editable else {'kind':kind, 'products':[], 'groups':[]}
     return render(request, 'erp/order_form.html', {
         'form':form, 'formset':formset, 'order':order, 'editing':pk is not None,
@@ -109,6 +111,7 @@ def edit_order(request, pk=None):
         'can_add_lines':editable and can_add_lines, 'product_group':group,
         'selection':selection, 'can_view_lines':can_view_lines,
         'can_manage_lines':editable,
+        'cancelled_lines':cancelled_lines,
     })
 
 
@@ -129,6 +132,8 @@ def edit_order_line(request, pk=None):
         return HttpResponse('Sipariş kalemi başka bir siparişe taşındı. Sayfayı yenileyin.', status=409)
     if original and locked[line.order_id].status != 'draft':
         raise PermissionDenied('Onaylı siparişin kalemleri değiştirilemez. Önce siparişi taslağa alın.')
+    if original and line.status == 'cancelled':
+        raise PermissionDenied('İptal edilmiş kalem değiştirilemez.')
     selected_order = locked.get(selected_id) if selected_id is not None and request.user.has_perm('erp.view_order') else None
     kind = selected_order.kind if selected_order else ''
     group = request.POST.get('product_group', '') if request.method == 'POST' else request.GET.get('category', '')
@@ -149,3 +154,28 @@ def edit_order_line(request, pk=None):
         'title':'Sipariş kalemleri', 'selection':selection_context(request.user,kind),
         'product_group':group,
     })
+
+
+class CancellationForm(forms.Form):
+    reason = forms.CharField(label='İptal nedeni',max_length=2000,widget=forms.Textarea)
+
+
+@login_required
+@require_http_methods(['GET','POST'])
+def cancel_order_line(request, pk):
+    if not all(request.user.has_perm('erp.'+code) for code in ('cancel_orderline','view_orderline','view_order')):
+        raise PermissionDenied
+    line = get_object_or_404(OrderLine.objects.select_related('order','product','cancelled_by'),pk=pk)
+    form = CancellationForm(request.POST if request.method == 'POST' else None)
+    if request.method == 'POST' and form.is_valid():
+        from .operations import cancel_line
+        try:
+            _, created = cancel_line(pk,request.user,form.cleaned_data['reason'])
+        except ValidationError as exc:
+            form.add_error(None,exc)
+        except (OperationalError,IntegrityError):
+            form.add_error(None,'Kayıt meşgul. Kalemin güncel durumunu kontrol edin.')
+        else:
+            messages.success(request,'Kalem iptal edildi; geçmişi korundu.' if created else 'Kalem zaten iptal edilmiş. İşlem tekrarlanmadı.')
+            return redirect(f'/modul/siparis-kalemleri/?order={line.order_id}')
+    return render(request,'erp/cancel_line.html',{'line':line,'form':form,'slug':'siparis-kalemleri'})

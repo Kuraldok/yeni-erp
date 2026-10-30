@@ -118,7 +118,7 @@ class ComponentRoutingTests(TestCase):
         step=route.steps.get(sequence=2)
         step.name='Ürüne özel kalıplama'
         step.save(update_fields=['name'])
-        job=ProductionJob.objects.create(number='IE-ROUTE',product=route.product,quantity=2,unit='adet',flow=route.flow,casting_material='pig',created_by=self.user)
+        job=ProductionJob.objects.create(stock_mode='tracking',number='IE-ROUTE',product=route.product,quantity=2,unit='adet',flow=route.flow,casting_material='pig',created_by=self.user)
         advance_job(job.pk,self.user,'start')
         job.refresh_from_db()
         self.assertEqual(job.route_id,route.pk)
@@ -130,7 +130,7 @@ class ComponentRoutingTests(TestCase):
 
     def test_casting_material_is_still_explicit(self):
         route=self.route('BC-1')
-        job=ProductionJob.objects.create(number='IE-NO-MATERIAL',product=route.product,quantity=1,unit='adet',flow=route.flow,created_by=self.user)
+        job=ProductionJob.objects.create(stock_mode='tracking',number='IE-NO-MATERIAL',product=route.product,quantity=1,unit='adet',flow=route.flow,created_by=self.user)
         with self.assertRaises(ValidationError):advance_job(job.pk,self.user,'start')
         self.assertEqual(job.steps.count(),0)
         self.assertEqual(job.casting_material,'')
@@ -138,7 +138,7 @@ class ComponentRoutingTests(TestCase):
     def test_purchased_components_cannot_be_manufactured(self):
         route=self.route('BC-4')
         flow=ProductionFlow.objects.get(code='casting')
-        job=ProductionJob.objects.create(number='IE-PURCHASE',product=route.product,quantity=1,unit='adet',flow=flow,casting_material='pig',created_by=self.user)
+        job=ProductionJob.objects.create(stock_mode='tracking',number='IE-PURCHASE',product=route.product,quantity=1,unit='adet',flow=flow,casting_material='pig',created_by=self.user)
         with self.assertRaises(ValidationError):advance_job(job.pk,self.user,'start')
         self.assertEqual(job.steps.count(),0)
         job.route=route
@@ -146,7 +146,7 @@ class ComponentRoutingTests(TestCase):
 
     def test_route_cannot_be_used_for_other_product_or_flow(self):
         route=self.route('BC-1')
-        job=ProductionJob(number='IE-WRONG',product=Product.objects.get(code='BC-2'),quantity=1,unit='adet',flow=route.flow,route=route,casting_material='pig',created_by=self.user)
+        job=ProductionJob(stock_mode='tracking',number='IE-WRONG',product=Product.objects.get(code='BC-2'),quantity=1,unit='adet',flow=route.flow,route=route,casting_material='pig',created_by=self.user)
         with self.assertRaises(ValidationError):job.full_clean()
         job.product=route.product
         job.flow=ProductionFlow.objects.get(code='wood')
@@ -172,7 +172,7 @@ class ComponentRoutingTests(TestCase):
     def test_multiple_active_routes_require_explicit_selection(self):
         route=self.route('BC-1')
         ProductionRoute.objects.create(product=route.product,name='Alternatif rota',version=2,flow=route.flow,supply_method='manufacture')
-        job=ProductionJob.objects.create(number='IE-CHOOSE',product=route.product,quantity=1,unit='adet',flow=route.flow,casting_material='aluminium',created_by=self.user)
+        job=ProductionJob.objects.create(stock_mode='tracking',number='IE-CHOOSE',product=route.product,quantity=1,unit='adet',flow=route.flow,casting_material='aluminium',created_by=self.user)
         with self.assertRaises(ValidationError):advance_job(job.pk,self.user,'start')
         job.route=route
         job.save(update_fields=['route'])

@@ -1,8 +1,10 @@
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import transaction
 from django.utils import timezone
 from .models import ProductionJob, ProductionJobStep, ProductionRoute
 from .routing import is_codeless_grill_material, requirement_issues
+from .audit import with_actor
+from .quantities import is_fractional_count
 
 
 def material_plan(recipe, quantity):
@@ -15,6 +17,8 @@ def material_plan(recipe, quantity):
         routes.setdefault(route.product_id,route)
     for line in lines:
         issues=requirement_issues(line)
+        if is_fractional_count(line.quantity,line.unit) and not any('tam sayı' in issue for issue in issues):
+            issues.append('Adet birimindeki miktar tam sayı olmalıdır.')
         if not line.component_id and not is_codeless_grill_material(line.component_kind, line.sheet, line.component_code):
             issues.append('Stok kartı eşleştirmesi yok.')
         rows.append({'line':line,'required':line.quantity*quantity if line.quantity is not None else None,'issues':issues,'route':routes.get(line.component_id)})
@@ -22,8 +26,11 @@ def material_plan(recipe, quantity):
     if not rows:problems.append('Reçetenin bileşen satırı yok.')
     return rows,problems
 
+@with_actor
 @transaction.atomic
-def advance_job(job_id, actor, expected):
+def advance_job(job_id, actor, expected, actual_quantity=None):
+    if not actor or not actor.has_perm('erp.advance_productionjob'):
+        raise PermissionDenied('Üretim ilerletme yetkiniz yok.')
     job=ProductionJob.objects.select_for_update(of=('self',)).select_related('flow','product','recipe','route').get(pk=job_id)
     if job.state=='completed': raise ValidationError('İş emri zaten tamamlandı.')
     pending=job.steps.filter(completed_at__isnull=True).order_by('sequence').first()
@@ -40,7 +47,7 @@ def advance_job(job_id, actor, expected):
                 job.full_clean()
             elif job.product.supply_method=='manufacture':
                 raise ValidationError('Bu yarı mamul için seçilen akışa ait etkin üretim rotası yok.')
-        if job.recipe_id:
+        if job.recipe_id and job.stock_mode == 'tracking':
             _,problems=material_plan(job.recipe,job.quantity)
             if problems:
                 raise ValidationError('Reçetede eksik veya çelişkili bilgi var. Kaynak Excel düzeltilip tekrar aktarılmadan başlatılamaz.')
@@ -49,6 +56,9 @@ def advance_job(job_id, actor, expected):
             raise ValidationError('Bağlı ahşap/döküm işleri tamamlanmadan bu iş başlatılamaz.')
         if previous and job.flow.area!='shared':
             raise ValidationError('Önceki işler yalnızca ortak montaj/paketleme akışına bağlanabilir.')
+        if job.stock_mode == 'inventory':
+            from .inventory import prepare_production_inputs
+            prepare_production_inputs(job)
         if job.route_id:
             definitions=list(job.route.steps.all())
         else:
@@ -61,6 +71,11 @@ def advance_job(job_id, actor, expected):
         return 'İş emri başlatıldı. İlk aşama bekliyor.'
     step=job.steps.filter(completed_at__isnull=True).order_by('sequence').first()
     if not step:raise ValidationError('Tamamlanacak aşama bulunamadı.')
+    if job.stock_mode == 'inventory' and not job.steps.filter(completed_at__isnull=True).exclude(pk=step.pk).exists():
+        if actual_quantity is None:
+            raise ValidationError('Son aşamada gerçekleşen üretim miktarını girin.')
+        from .inventory import post_production
+        post_production(job,actor,actual_quantity)
     step.completed_at=timezone.now()
     step.completed_by=actor
     step.save(update_fields=['completed_at','completed_by'])

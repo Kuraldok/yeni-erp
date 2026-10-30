@@ -14,7 +14,7 @@
 <section class="panel"><h2>Ürün bilgileri</h2><dl class="product-facts">
   <div><dt>Ürün kodu</dt><dd>{{ product.code }}</dd></div><div><dt>Ürün adı</dt><dd>{{ product.name|default:'—' }}</dd></div>
   <div><dt>Ürün grubu</dt><dd>{{ display_group }}</dd></div><div><dt>Üretim alanı</dt><dd>{{ product.get_production_area_display|default:'—' }}</dd></div>
-  <div><dt>Birim</dt><dd>{{ product.get_unit_display|default:'—' }}</dd></div><div><dt>Asgari stok</dt><dd>{{ product.minimum_stock|default_if_none:'—' }}</dd></div>
+  <div><dt>Birim</dt><dd>{{ product.get_unit_display|default:'—' }}</dd></div><div><dt>Asgari stok</dt><dd>{{ product.minimum_stock|count_amount:product.unit|default_if_none:'—' }}</dd></div>
   <div><dt>Aktif</dt><dd>{{ product.active|yesno:'Evet,Hayır' }}</dd></div>
 </dl></section>
 {% else %}

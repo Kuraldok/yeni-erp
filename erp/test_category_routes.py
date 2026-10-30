@@ -281,7 +281,7 @@ class CategoryRoutingTests(TestCase):
         ]), 'jobs.xlsx')
         for code, count in [('W', 4), ('C', 7)]:
             route = self.route(code)
-            job = ProductionJob.objects.create(number=f'IE-{code}', product=route.product, quantity=2, unit='adet', flow=route.flow, created_by=self.user)
+            job = ProductionJob.objects.create(stock_mode='tracking',number=f'IE-{code}', product=route.product, quantity=2, unit='adet', flow=route.flow, created_by=self.user)
             if code == 'C':
                 with self.assertRaises(ValidationError):
                     advance_job(job.pk, self.user, 'start')

@@ -4,10 +4,12 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models, transaction
 from django.db.models import Sum, Q
+from .audit import BusinessModel, AuditedQuerySet
+from .quantities import is_fractional_count, validate_count
 
 POSITIVE = MinValueValidator(Decimal('0.001'))
 
-class Product(models.Model):
+class Product(BusinessModel):
     code = models.CharField('Ürün kodu', max_length=100, unique=True)
     name = models.CharField('Ürün adı', max_length=200, blank=True)
     unit = models.CharField('Birim', max_length=12, choices=[('adet','Adet'),('kg','Kilogram'),('m','Metre'),('lt','Litre')], default='adet', blank=True)
@@ -22,8 +24,16 @@ class Product(models.Model):
         verbose_name = 'Ürün'
         verbose_name_plural = 'Ürünler'
     def __str__(self): return f'{self.code} · {self.name}'
+    def clean(self):
+        validate_count(self.minimum_stock, self.unit, 'minimum_stock')
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).first()
+            if previous and previous.unit != self.unit and StockMovement.objects.filter(product=self).exists():
+                raise ValidationError({'unit':'Stok geçmişi bulunan kartın birimi değiştirilemez.'})
+            if previous and previous.unit != self.unit and any(is_fractional_count(quantity,self.unit) for quantity in OrderLine.objects.filter(product=self).values_list('quantity',flat=True)):
+                raise ValidationError({'unit':'Kesirli miktarlı sipariş geçmişi bulunan kart Adet birimine çevrilemez; ayrı stok kartı açın.'})
 
-class Warehouse(models.Model):
+class Warehouse(BusinessModel):
     name = models.CharField('Depo adı', max_length=100, unique=True)
     class Meta:
         ordering = ['name']
@@ -36,11 +46,13 @@ def stock_balance(product, warehouse=None):
     if warehouse is not None: qs = qs.filter(warehouse=warehouse)
     return (qs.filter(kind='in').aggregate(n=Sum('quantity'))['n'] or Decimal(0)) - (qs.filter(kind='out').aggregate(n=Sum('quantity'))['n'] or Decimal(0))
 
-class StockMovement(models.Model):
+class StockMovement(BusinessModel):
     product = models.ForeignKey(Product, on_delete=models.PROTECT, verbose_name='Ürün')
     warehouse = models.ForeignKey(Warehouse, on_delete=models.PROTECT, verbose_name='Depo')
     kind = models.CharField('İşlem', max_length=3, choices=[('in','Giriş'),('out','Çıkış')])
-    quantity = models.DecimalField('Miktar', max_digits=14, decimal_places=3, validators=[POSITIVE])
+    quantity = models.DecimalField('Miktar', max_digits=24, decimal_places=12, validators=[MinValueValidator(Decimal('0.000000000001'))])
+    unit = models.CharField('İşlem birimi', max_length=12, blank=True, editable=False)
+    posting = models.ForeignKey('ProductionPosting', on_delete=models.PROTECT, null=True, blank=True, editable=False, related_name='movements')
     note = models.CharField('Açıklama / belge no', max_length=240)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, verbose_name='Kaydeden', editable=False)
     created_at = models.DateTimeField('Tarih', auto_now_add=True)
@@ -48,17 +60,21 @@ class StockMovement(models.Model):
         ordering = ['-created_at', '-pk']
         verbose_name = 'Stok hareketi'
         verbose_name_plural = 'Stok hareketleri'
-        constraints = [models.CheckConstraint(condition=Q(quantity__gt=0), name='positive_stock_quantity')]
+        constraints = [models.CheckConstraint(condition=Q(quantity__gt=0), name='positive_stock_quantity'), models.UniqueConstraint(fields=['posting','product','warehouse','kind'], condition=Q(posting__isnull=False), name='unique_production_stock_leg')]
     def __str__(self): return f'{self.product.code} · {self.get_kind_display()} · {self.quantity}'
     def clean(self):
         if self.product_id and not self.product.unit:
             raise ValidationError({'product':'Ürün kartında ölçü birimi boş. Stok hareketinden önce birimi açıkça tanımlayın.'})
+        if self.product_id:
+            validate_count(self.quantity, self.product.unit)
     def save(self, *args, **kwargs):
         if not self._state.adding:
             raise ValidationError('Stok hareketi değiştirilemez. Düzeltme için ters hareket girin.')
         with transaction.atomic():
             # All movements in a warehouse use the same row lock on PostgreSQL.
             Warehouse.objects.select_for_update().get(pk=self.warehouse_id)
+            self.product = Product.objects.select_for_update().get(pk=self.product_id)
+            self.unit = self.product.unit
             self.full_clean()
             if self.kind == 'out' and stock_balance(self.product, self.warehouse) < self.quantity:
                 raise ValidationError('Yetersiz stok. Çıkış miktarı mevcut stoktan büyük olamaz.')
@@ -66,7 +82,7 @@ class StockMovement(models.Model):
     def delete(self, *args, **kwargs):
         raise ValidationError('Stok hareketi silinemez. Düzeltme için ters hareket girin.')
 
-class Partner(models.Model):
+class Partner(BusinessModel):
     name = models.CharField('Unvan / ad', max_length=180)
     kind = models.CharField('Tür', max_length=10, choices=[('customer','Müşteri'),('supplier','Tedarikçi'),('both','Müşteri ve tedarikçi')])
     tax_number = models.CharField('Vergi / kimlik no', max_length=20, blank=True)
@@ -79,7 +95,7 @@ class Partner(models.Model):
         verbose_name_plural = 'Müşteri ve tedarikçiler'
     def __str__(self): return self.name
 
-class Order(models.Model):
+class Order(BusinessModel):
     number = models.CharField('Sipariş no', max_length=40, unique=True)
     kind = models.CharField('Tür', max_length=8, choices=[('sale','Satış'),('purchase','Satın alma')])
     partner = models.ForeignKey(Partner, on_delete=models.PROTECT, verbose_name='Müşteri / tedarikçi')
@@ -98,29 +114,36 @@ class Order(models.Model):
             raise ValidationError({'due_date':'Teslim tarihi sipariş tarihinden önce olamaz.'})
         if self.partner_id and self.partner.kind not in (('customer','both') if self.kind == 'sale' else ('supplier','both')):
             raise ValidationError({'partner':'Sipariş türüne uygun müşteri veya tedarikçi seçin.'})
-        if self.status in ('approved','completed') and (not self.pk or not self.lines.exists()):
+        if self.status in ('approved','completed') and (not self.pk or not self.lines.filter(status='active').exists()):
             raise ValidationError({'status':'Önce taslak siparişi kaydedip en az bir kalem ekleyin.'})
         if self.pk and self.kind in ('sale','purchase'):
             previous_kind = type(self).objects.filter(pk=self.pk).values_list('kind',flat=True).first()
             if previous_kind != self.kind or self.status in ('approved','completed'):
                 from .orders import order_products
-                if self.lines.exclude(product__in=order_products(self.kind)).exists():
+                if self.lines.filter(status='active').exclude(product__in=order_products(self.kind)).exists():
                     field = 'kind' if previous_kind != self.kind else 'status'
                     raise ValidationError({field:'Sipariş kalemleri bu türe uygun değil. Satışta yalnızca ana ürün, satın almada yalnızca hammadde kullanılabilir.'})
     @property
-    def total(self): return sum((line.total for line in self.lines.all()), Decimal(0))
+    def total(self): return sum((line.total for line in self.lines.all() if line.status == 'active'), Decimal(0))
 
-class OrderLine(models.Model):
+class OrderLine(BusinessModel):
     order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name='lines', verbose_name='Sipariş')
     product = models.ForeignKey(Product, on_delete=models.PROTECT, verbose_name='Ürün')
     quantity = models.DecimalField('Miktar', max_digits=14, decimal_places=3, validators=[POSITIVE])
     unit_price = models.DecimalField('Birim fiyat (KDV hariç)', max_digits=14, decimal_places=2, validators=[MinValueValidator(0)])
+    status = models.CharField('Kalem durumu', max_length=12, choices=[('active','Etkin'),('cancelled','İptal')], default='active', editable=False)
+    cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, editable=False, related_name='+', verbose_name='İptal eden')
+    cancelled_at = models.DateTimeField('İptal tarihi', null=True, editable=False)
+    cancellation_reason = models.TextField('İptal nedeni', blank=True, editable=False)
     class Meta:
         verbose_name = 'Sipariş kalemi'
         verbose_name_plural = 'Sipariş kalemleri'
+        permissions = [('cancel_orderline','Sipariş kalemini iptal edebilir')]
         constraints = [models.CheckConstraint(condition=Q(quantity__gt=0), name='positive_order_quantity'), models.CheckConstraint(condition=Q(unit_price__gte=0), name='nonnegative_price')]
     def clean(self):
         previous = type(self).objects.filter(pk=self.pk).select_related('order').first() if self.pk else None
+        if previous and previous.status == 'cancelled':
+            raise ValidationError('İptal edilmiş kalem değiştirilemez.')
         if previous and previous.order.status != 'draft':
             raise ValidationError('Onaylı siparişin kalemi başka siparişe taşınamaz veya değiştirilemez.')
         if self.order_id and self.order.status != 'draft':
@@ -133,11 +156,13 @@ class OrderLine(models.Model):
             from .orders import order_products
             if not order_products(order.kind).filter(pk=self.product_id).exists():
                 raise ValidationError({'product':'Satış siparişinde yalnızca ana ürün, satın alma siparişinde yalnızca hammadde seçilebilir.'})
+        if self.product_id:
+            validate_count(self.quantity, self.product.unit)
     @property
     def total(self): return (self.quantity * self.unit_price).quantize(Decimal('0.01'))
     def __str__(self): return f'{self.order.number} · {self.product.code}'
 
-class ProductionRoute(models.Model):
+class ProductionRoute(BusinessModel):
     name = models.CharField('Rota adı', max_length=160)
     product = models.ForeignKey(Product, on_delete=models.PROTECT, verbose_name='Üretilecek ürün')
     version = models.PositiveIntegerField('Sürüm', default=1, validators=[MinValueValidator(1)])
@@ -154,7 +179,7 @@ class ProductionRoute(models.Model):
         if self.supply_method=='purchase' and self.flow_id:
             raise ValidationError({'flow':'Hazır temin rotasında iç üretim akışı seçilemez.'})
 
-class RouteStep(models.Model):
+class RouteStep(BusinessModel):
     route = models.ForeignKey(ProductionRoute, on_delete=models.PROTECT, related_name='steps', verbose_name='Rota')
     sequence = models.PositiveIntegerField('Sıra', validators=[MinValueValidator(1)])
     name = models.CharField('Operasyon', max_length=160)
@@ -168,7 +193,7 @@ class RouteStep(models.Model):
         constraints = [models.UniqueConstraint(fields=['route','sequence'], name='unique_route_sequence')]
     def __str__(self): return f'{self.route} · {self.sequence}. {self.name}'
 
-class CatalogImport(models.Model):
+class CatalogImport(BusinessModel):
     filename = models.CharField('Dosya', max_length=240)
     checksum = models.CharField('Dosya özeti', max_length=64, unique=True)
     created_at = models.DateTimeField('Aktarım tarihi', auto_now_add=True)
@@ -180,7 +205,7 @@ class CatalogImport(models.Model):
         verbose_name_plural = 'Excel aktarımları'
     def __str__(self): return self.filename
 
-class MaterialRecipe(models.Model):
+class MaterialRecipe(BusinessModel):
     source = models.ForeignKey(CatalogImport, on_delete=models.PROTECT, verbose_name='Excel aktarımı')
     sheet = models.CharField('Excel sayfası', max_length=100)
     parent_code = models.CharField('Üst ürün kodu', max_length=100)
@@ -194,7 +219,7 @@ class MaterialRecipe(models.Model):
         constraints = [models.UniqueConstraint(fields=['source','sheet','parent_code','parent_name'], name='unique_source_recipe')]
     def __str__(self): return f'{self.parent_code} · {self.parent_name} ({self.sheet})'
 
-class MaterialRequirement(models.Model):
+class MaterialRequirement(BusinessModel):
     source = models.ForeignKey(CatalogImport, on_delete=models.PROTECT, verbose_name='Excel aktarımı')
     recipe = models.ForeignKey(MaterialRecipe, on_delete=models.PROTECT, null=True, related_name='lines', verbose_name='Ürün reçetesi')
     sheet = models.CharField('Sayfa', max_length=100)
@@ -215,8 +240,10 @@ class MaterialRequirement(models.Model):
         verbose_name_plural = 'Reçete satırları'
         constraints = [models.UniqueConstraint(fields=['source','sheet','row_number'], name='unique_import_row')]
     def __str__(self): return f'{self.sheet}:{self.row_number} · {self.component_code or self.component_name}'
+    def clean(self):
+        validate_count(self.quantity, self.unit)
 
-class ProductionFlow(models.Model):
+class ProductionFlow(BusinessModel):
     code = models.CharField('Akış kodu', max_length=30, unique=True)
     name = models.CharField('Akış adı', max_length=120)
     area = models.CharField('Alan', max_length=10, choices=[('wood','Ahşap'),('casting','Döküm'),('shared','Ortak bitirme')])
@@ -226,7 +253,7 @@ class ProductionFlow(models.Model):
         verbose_name_plural = 'Standart üretim akışları'
     def __str__(self): return self.name
 
-class ProductionFlowStep(models.Model):
+class ProductionFlowStep(BusinessModel):
     flow = models.ForeignKey(ProductionFlow, on_delete=models.PROTECT, related_name='steps', verbose_name='Akış')
     sequence = models.PositiveIntegerField('Sıra')
     name = models.CharField('Aşama', max_length=160)
@@ -239,7 +266,7 @@ class ProductionFlowStep(models.Model):
         verbose_name_plural = 'Standart akış adımları'
     def __str__(self): return f'{self.flow} · {self.sequence}. {self.name}'
 
-class ProductionJob(models.Model):
+class ProductionJob(BusinessModel):
     number = models.CharField('İş emri no', max_length=60, unique=True)
     product = models.ForeignKey(Product, on_delete=models.PROTECT, verbose_name='Üretilecek ürün / yarı mamul')
     quantity = models.DecimalField('Üretim miktarı', max_digits=14, decimal_places=3, validators=[POSITIVE])
@@ -254,14 +281,23 @@ class ProductionJob(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, editable=False)
     created_at = models.DateTimeField('Oluşturma tarihi', auto_now_add=True)
     note = models.TextField('Not', blank=True)
+    stock_mode = models.CharField('Stok bağlantısı', max_length=12, choices=[('inventory','Üretim ve stok'),('tracking','Yalnız aşama takibi')], default='inventory')
+    consumption_recipe = models.ForeignKey('ConsumptionRecipe', on_delete=models.PROTECT, null=True, blank=True, verbose_name='Stok tüketim reçetesi')
+    input_warehouse = models.ForeignKey(Warehouse, on_delete=models.PROTECT, null=True, blank=True, related_name='+', verbose_name='Girdi çıkış deposu')
+    output_warehouse = models.ForeignKey(Warehouse, on_delete=models.PROTECT, null=True, blank=True, related_name='+', verbose_name='Ürün giriş deposu')
+    actual_quantity = models.DecimalField('Gerçekleşen üretim', max_digits=14, decimal_places=3, null=True, editable=False)
     class Meta:
         ordering = ['-pk']
         verbose_name = 'Üretim iş emri'
         verbose_name_plural = 'Üretim iş emirleri'
-        permissions = [('advance_productionjob','Üretim aşamasını ilerletebilir')]
+        permissions = [('advance_productionjob','Üretim aşamasını ilerletebilir'),('post_production_stock','Üretim stok işlemi yapabilir'),('track_production_without_stock','Stoksuz aşama takibi açabilir')]
         constraints = [models.CheckConstraint(condition=Q(quantity__gt=0), name='positive_job_quantity')]
     def __str__(self): return self.number
     def clean(self):
+        validate_count(self.quantity, self.unit)
+        validate_count(self.actual_quantity, self.unit, 'actual_quantity')
+        if self.consumption_recipe_id and self.product_id and self.consumption_recipe.product_id != self.product_id:
+            raise ValidationError({'consumption_recipe':'Tüketim reçetesi seçilen ürüne ait olmalıdır.'})
         if self.route_id:
             if self.product_id and self.route.product_id!=self.product_id:
                 raise ValidationError({'route':'Rota seçilen ürün / yarı mamul kartına ait olmalıdır.'})
@@ -286,13 +322,13 @@ class ProductionJob(models.Model):
                 raise ValidationError({'assembly_required':'Montaj gerekip gerekmediğini açıkça seçin.'})
             if self.product_id and self.product.production_area and self.flow.area != 'shared' and self.product.production_area != self.flow.area:
                 raise ValidationError({'flow':'Akış ürünün tanımlı üretim alanıyla uyuşmuyor.'})
-        if self.recipe_id and self.casting_material:
+        if self.recipe_id and self.casting_material and self.stock_mode == 'tracking':
             names = set(self.recipe.lines.filter(component_kind='Hammadde').values_list('component_name',flat=True))
             selected = 'Alüminyum Külçe' if self.casting_material=='aluminium' else 'Pik'
             if names and selected not in names:
                 raise ValidationError({'casting_material':'Seçilen hammadde bu Excel reçetesinde bulunmuyor.'})
 
-class ProductionJobStep(models.Model):
+class ProductionJobStep(BusinessModel):
     job = models.ForeignKey(ProductionJob, on_delete=models.PROTECT, related_name='steps', verbose_name='İş emri')
     sequence = models.PositiveIntegerField('Sıra')
     name = models.CharField('Aşama', max_length=160)
@@ -304,3 +340,198 @@ class ProductionJobStep(models.Model):
         verbose_name = 'İş emri aşaması'
         verbose_name_plural = 'İş emri aşamaları'
     def __str__(self): return f'{self.job} · {self.sequence}. {self.name}'
+
+
+class ImmutableQuerySet(models.QuerySet):
+    def bulk_create(self, objs, **kwargs):
+        if kwargs.get('update_conflicts') or kwargs.get('ignore_conflicts'):
+            raise ValidationError('Geçmiş kayıtları toplu işlemle değiştirilemez veya sessizce geçilemez.')
+        return super().bulk_create(objs, **kwargs)
+    def update(self, **kwargs):
+        raise ValidationError('Geçmiş kayıtları değiştirilemez.')
+    def delete(self):
+        raise ValidationError('Geçmiş kayıtları silinemez.')
+    def bulk_update(self, *args, **kwargs):
+        raise ValidationError('Geçmiş kayıtları değiştirilemez.')
+
+
+class FrozenBusinessQuerySet(AuditedQuerySet):
+    update = ImmutableQuerySet.update
+    delete = ImmutableQuerySet.delete
+    bulk_update = ImmutableQuerySet.bulk_update
+
+
+class AuditEvent(models.Model):
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, editable=False, verbose_name='Kullanıcı')
+    actor_label = models.CharField('Kullanıcı / kaynak', max_length=160)
+    action = models.CharField('İşlem', max_length=16, choices=[('create','Ekleme'),('update','Düzenleme'),('delete','Silme'),('cancel','İptal')])
+    model_label = models.CharField('Kayıt türü', max_length=100)
+    object_id = models.CharField('Kayıt kimliği', max_length=100)
+    object_label = models.CharField('Kayıt', max_length=240)
+    created_at = models.DateTimeField('Tarih / saat', auto_now_add=True)
+    changes = models.JSONField('Değişiklikler', default=dict)
+    reason = models.TextField('Neden', blank=True)
+    objects = ImmutableQuerySet.as_manager()
+    class Meta:
+        ordering = ['-pk']
+        verbose_name = 'İşlem geçmişi'
+        verbose_name_plural = 'İşlem geçmişi'
+        default_permissions = ('view',)
+        indexes = [models.Index(fields=['model_label','object_id'])]
+    def __str__(self): return f'{self.actor_label} · {self.get_action_display()} · {self.object_label}'
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError('İşlem geçmişi değiştirilemez.')
+        return super().save(*args, **kwargs)
+    def delete(self, *args, **kwargs):
+        raise ValidationError('İşlem geçmişi silinemez.')
+
+
+class QuantityReview(BusinessModel):
+    model_label = models.CharField('Kayıt türü', max_length=100)
+    object_id = models.CharField('Kayıt kimliği', max_length=100)
+    field_name = models.CharField('Alan', max_length=100)
+    quantity = models.DecimalField('Kaynak miktar', max_digits=24, decimal_places=12)
+    note = models.CharField('İnceleme', max_length=240, default='Adet miktarı kesirli; özgün değer korundu.')
+    detected_at = models.DateTimeField('Tespit tarihi', auto_now_add=True)
+    resolved_at = models.DateTimeField('Düzeltme tarihi', null=True, blank=True)
+    class Meta:
+        ordering = ['-pk']
+        verbose_name = 'Miktar incelemesi'
+        verbose_name_plural = 'Miktar incelemeleri'
+        default_permissions = ('view',)
+        constraints = [models.UniqueConstraint(fields=['model_label','object_id','field_name'],name='unique_quantity_review')]
+    def __str__(self): return f'{self.model_label}:{self.object_id} · {self.quantity}'
+
+
+class ConsumptionRecipe(BusinessModel):
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, verbose_name='Üretilecek ürün / yarı mamul')
+    name = models.CharField('Reçete adı', max_length=160)
+    version = models.PositiveIntegerField('Sürüm', default=1, validators=[MinValueValidator(1)])
+    unit = models.CharField('Bir çıktı için birim', max_length=12, choices=Product._meta.get_field('unit').choices)
+    source = models.ForeignKey(MaterialRecipe, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Kaynak Excel reçetesi')
+    active = models.BooleanField('Aktif', default=True)
+    confirmed = models.BooleanField('Girdiler bu ürünün doğrudan tüketimidir', default=False,
+        help_text='Yarı mamulde tüketilmiş hammaddeleri mamul reçetesine tekrar eklemeyin. Girdi düzenlemesinden sonra yeniden doğrulayın.')
+    confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, editable=False, related_name='+', verbose_name='Doğrulayan')
+    confirmed_at = models.DateTimeField('Doğrulama tarihi', null=True, editable=False)
+    class Meta:
+        ordering = ['product','version']
+        verbose_name = 'Stok tüketim reçetesi'
+        verbose_name_plural = 'Stok tüketim reçeteleri'
+        constraints = [models.UniqueConstraint(fields=['product','version'],name='unique_consumption_version')]
+    def __str__(self): return f'{self.name} · v{self.version}'
+    @property
+    def locked(self):
+        return bool(self.pk and self.productionjob_set.exclude(state='draft').exists())
+    def clean(self):
+        if self.locked:
+            raise ValidationError('Üretimde kullanılmış tüketim reçetesi korunur. Yeni sürüm oluşturun.')
+        if self.product_id and (self.product.kind in ('raw','part') or not self.product.unit or self.unit != self.product.unit):
+            raise ValidationError({'product':'Çıktı, birimi tanımlı bir mamul / yarı mamul olmalı; reçete birimi kartla uyuşmalıdır.'})
+        if self.source_id and self.product_id and self.source.product_id != self.product_id:
+            raise ValidationError({'source':'Kaynak reçete çıktı ürününe bağlı olmalıdır.'})
+        if self.confirmed:
+            from .inventory import validate_consumption_recipe
+            validate_consumption_recipe(self)
+    def save(self, *args, **kwargs):
+        from django.utils import timezone
+        from .audit import current_actor
+        if self.locked:
+            raise ValidationError('Üretimde kullanılmış reçete değiştirilemez.')
+        previous = type(self).objects.filter(pk=self.pk).first() if self.pk else None
+        if self.confirmed:
+            from .inventory import validate_consumption_recipe
+            validate_consumption_recipe(self)
+            if not previous or not previous.confirmed:
+                self.confirmed_at = timezone.now()
+                self.confirmed_by = current_actor()
+        else:
+            self.confirmed_at = None
+            self.confirmed_by = None
+        if kwargs.get('update_fields') is not None:
+            kwargs['update_fields'] = set(kwargs['update_fields']) | {'confirmed_at','confirmed_by'}
+        return super().save(*args, **kwargs)
+
+
+class ConsumptionRecipeLine(BusinessModel):
+    recipe = models.ForeignKey(ConsumptionRecipe, on_delete=models.PROTECT, related_name='inputs', verbose_name='Tüketim reçetesi')
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Girdi stok kartı')
+    quantity = models.DecimalField('Bir çıktı için tüketim', max_digits=24, decimal_places=12, null=True, blank=True, validators=[MinValueValidator(Decimal('0.000000000001'))])
+    unit = models.CharField('Girdi birimi', max_length=12, choices=Product._meta.get_field('unit').choices, blank=True)
+    source_line = models.ForeignKey(MaterialRequirement, on_delete=models.PROTECT, null=True, blank=True, editable=False)
+    active = models.BooleanField('Bu üretimde tüketilir', default=True)
+    class Meta:
+        ordering = ['pk']
+        verbose_name = 'Tüketim girdisi'
+        verbose_name_plural = 'Tüketim girdileri'
+        constraints = [models.UniqueConstraint(fields=['recipe','source_line'],condition=Q(source_line__isnull=False),name='unique_consumption_source_row')]
+    def __str__(self): return f'{self.recipe} · {self.product or "Eşleştirme bekliyor"}'
+    def clean(self):
+        validate_count(self.quantity, self.unit)
+        if self.recipe_id and self.recipe.locked:
+            raise ValidationError('Kullanılmış reçetenin girdileri değiştirilemez.')
+        if self.recipe_id and self.product_id == self.recipe.product_id:
+            raise ValidationError({'product':'Ürün kendi girdisi olamaz.'})
+        if self.product_id and self.unit and self.unit != self.product.unit:
+            raise ValidationError({'unit':'Girdi birimi stok kartının birimiyle aynı olmalıdır.'})
+        if not self.product_id and not self.source_line_id:
+            raise ValidationError({'product':'Girdi stok kartını seçin.'})
+    def save(self, *args, **kwargs):
+        with transaction.atomic():
+            recipe = ConsumptionRecipe.objects.select_for_update().get(pk=self.recipe_id)
+            if recipe.locked:
+                raise ValidationError('Kullanılmış reçetenin girdileri değiştirilemez.')
+            previous = type(self).objects.filter(pk=self.pk).first() if self.pk else None
+            if previous and previous.recipe_id != self.recipe_id:
+                raise ValidationError('Girdi başka reçeteye taşınamaz; yeni girdi ekleyin.')
+            result = super().save(*args, **kwargs)
+            if recipe.confirmed:
+                recipe.confirmed = False
+                recipe.save(update_fields=['confirmed','confirmed_at','confirmed_by'])
+            return result
+
+
+class ProductionInputSnapshot(BusinessModel):
+    job = models.ForeignKey(ProductionJob, on_delete=models.PROTECT, related_name='stock_inputs')
+    product = models.ForeignKey(Product, on_delete=models.PROTECT)
+    product_label = models.CharField('Girdi', max_length=240)
+    quantity = models.DecimalField('Bir çıktı için tüketim', max_digits=24, decimal_places=12)
+    unit = models.CharField('Birim', max_length=12)
+    objects = FrozenBusinessQuerySet.as_manager()
+    class Meta:
+        ordering = ['pk']
+        default_permissions = ('view',)
+        verbose_name = 'Üretim tüketim kopyası'
+        verbose_name_plural = 'Üretim tüketim kopyaları'
+    def __str__(self): return f'{self.job.number} · {self.product_label}'
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError('Başlatılan üretimin tüketim kopyası değiştirilemez.')
+        return super().save(*args, **kwargs)
+    def delete(self, *args, **kwargs):
+        raise ValidationError('Üretim tüketim kopyası silinemez.')
+
+
+class ProductionPosting(BusinessModel):
+    job = models.OneToOneField(ProductionJob, on_delete=models.PROTECT, related_name='stock_posting', verbose_name='İş emri')
+    quantity = models.DecimalField('Üretilen miktar', max_digits=14, decimal_places=3)
+    unit = models.CharField('Birim', max_length=12)
+    recipe_label = models.CharField('Tüketim reçetesi', max_length=240)
+    input_warehouse = models.ForeignKey(Warehouse, on_delete=models.PROTECT, related_name='+', verbose_name='Girdi deposu')
+    output_warehouse = models.ForeignKey(Warehouse, on_delete=models.PROTECT, related_name='+', verbose_name='Ürün deposu')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, verbose_name='Kaydeden')
+    created_at = models.DateTimeField('Tarih', auto_now_add=True)
+    objects = FrozenBusinessQuerySet.as_manager()
+    class Meta:
+        ordering = ['-pk']
+        default_permissions = ('view',)
+        verbose_name = 'Üretim stok fişi'
+        verbose_name_plural = 'Üretim stok fişleri'
+    def __str__(self): return f'{self.job.number} · {self.quantity} {self.unit}'
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError('Üretim stok fişi değiştirilemez.')
+        return super().save(*args, **kwargs)
+    def delete(self, *args, **kwargs):
+        raise ValidationError('Üretim stok fişi silinemez.')

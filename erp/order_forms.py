@@ -52,6 +52,15 @@ class OrderLineForm(forms.ModelForm):
             products = products.filter(condition)
         self.fields['product'].queryset = products
         self.fields['product'].label_from_instance = lambda product: f'{product} · {product.get_unit_display() or "Birim belirtilmedi"}'
+        selected = self.data.get(self.add_prefix('product')) if self.is_bound else self.initial.get('product')
+        selected_pk = selection_pk(selected)
+        if selected_pk is not None:
+            product = products.filter(pk=selected_pk).first()
+            if product and product.unit == 'adet':
+                self.fields['quantity'].widget.attrs.update(step='1',min='1')
+                value = self.initial.get('quantity')
+                if value is not None and value == int(value):
+                    self.initial['quantity'] = int(value)
 
 
 class BaseOrderLineFormSet(BaseInlineFormSet):

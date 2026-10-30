@@ -13,6 +13,8 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from .models import Product, CatalogImport, MaterialRecipe, MaterialRequirement
 from .routing import accepts_finished_components, is_codeless_grill_material, normalized
+from .audit import with_actor
+from .quantities import is_fractional_count
 
 HEADERS = {
     'parent_code':'Üst Ürün Kodu', 'parent_name':'Üst Ürün Adı',
@@ -96,6 +98,8 @@ def read_catalog(content):
                 for label in record['formulas']:
                     if raw.get(label) is None:
                         record['issues'].append(f'{label}: formülün kayıtlı sonucu yok; hesaplanmadı.')
+                if is_fractional_count(record['quantity'],record['unit']):
+                    record['issues'].append('Adet birimindeki miktar tam sayı olmalıdır; özgün değer korundu.')
                 # Raw JSON retains all blanks, original text, numbers and header layout.
                 if any(not isinstance(v,(str,int,float,bool,type(None))) for v in raw.values()):
                     raise ValidationError(f'{sheet.title}:{number}: beklenmeyen hücre türü.')
@@ -110,6 +114,7 @@ def read_catalog(content):
     return rows
 
 
+@with_actor
 def import_catalog(content, filename, actor=None):
     checksum=sha256(content).hexdigest()
     existing=CatalogImport.objects.filter(checksum=checksum).first()

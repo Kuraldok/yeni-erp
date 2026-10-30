@@ -1,0 +1,14 @@
+{% extends 'base.html' %}{% load erp_numbers %}
+{% block content %}
+<a class="back" href="{% url 'listing' 'tuketim-receteleri' %}">← Stok tüketim reçeteleri</a>
+<div class="page-heading"><div><p class="eyebrow">{{ recipe.product }} · {{ recipe.unit }}</p><h1>{{ recipe.name }} · v{{ recipe.version }}</h1></div>{% if not recipe.locked and perms.erp.change_consumptionrecipe %}<a class="button secondary" href="{% url 'edit' 'tuketim-receteleri' recipe.pk %}">Reçeteyi düzenle / doğrula</a>{% endif %}</div>
+<p class="notice">Bir çıktı için yalnızca doğrudan bu üretimde tüketilen girdileri tanımlayın. Mamulde kullanılan yarı mamulün hammaddesi daha önce tüketildiyse tekrar eklemeyin. Kaynak Excel ve önceki sürümler korunur.</p>
+{% if recipe.confirmed %}<p class="badge success">Doğrulandı · {{ recipe.confirmed_by|default:'Sistem / komut' }} · {{ recipe.confirmed_at|date:'d.m.Y H:i' }}</p>{% else %}<p class="notice">Girdileri eşleştirin; sonra reçete düzenleme ekranındaki “Girdiler bu ürünün doğrudan tüketimidir” seçimini işaretleyin. Girdi değiştiğinde doğrulama kaldırılır.</p>{% endif %}
+{% if recipe.locked %}<p class="notice">Bu sürüm üretimde kullanıldı. Yeni ihtiyaç için yeni sürüm oluşturun; başlamış işlerin tüketim kopyaları korunur.</p>{% endif %}
+{% for issue in issues %}<p class="errorlist">{{ issue }}</p>{% endfor %}
+<section class="panel"><div class="panel-heading"><h2>Doğrudan tüketim girdileri</h2>{% if not recipe.locked and perms.erp.add_consumptionrecipeline %}<a class="button" href="{% url 'create' 'tuketim-girdileri' %}?recipe={{ recipe.pk }}">Girdi ekle</a>{% endif %}</div>
+<div class="table-wrap"><table><thead><tr><th>Stok kartı</th><th>Bir çıktı için</th><th>Birim</th><th>Tüketilir</th><th>Kaynak</th><th>İşlem</th></tr></thead><tbody>
+{% for line in lines %}<tr><td>{{ line.product|default:'Eşleştirme bekliyor' }}</td><td>{{ line.quantity|requirement_amount:line.unit }}</td><td>{{ line.unit|default:'—' }}</td><td>{{ line.active|yesno:'Evet,Hayır' }}</td><td class="wrap">{% if line.source_line %}{{ line.source_line.sheet }}:{{ line.source_line.row_number }} · {{ line.source_line.component_name }}<small>Kaynak: {{ line.source_line.quantity|default_if_none:'—' }} {{ line.source_line.unit }}</small>{% else %}Elle tanımlandı{% endif %}</td><td>{% if not recipe.locked and perms.erp.change_consumptionrecipeline %}<a href="{% url 'edit' 'tuketim-girdileri' line.pk %}">Eşleştir / düzenle</a>{% endif %}</td></tr>
+{% empty %}<tr><td colspan="6">Girdi tanımlanmadı.</td></tr>{% endfor %}</tbody></table></div></section>
+{% if recipe.source %}<p>Kaynak: {% if perms.erp.view_materialrecipe and perms.erp.view_materialrequirement %}<a href="{% url 'recipe_detail' recipe.source_id %}">{{ recipe.source }}</a>{% else %}Excel reçetesi{% endif %}</p>{% endif %}
+{% endblock %}

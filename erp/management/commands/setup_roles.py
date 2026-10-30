@@ -14,6 +14,12 @@ class Command(BaseCommand):
         read_models=['catalogimport','materialrecipe','materialrequirement','productionflow','productionflowstep','productionjob','productionjobstep']
         roles['Gözlemci'] += ['view_'+m for m in read_models]
         roles['Üretim sorumlusu'] += ['view_'+m for m in read_models]+['add_productionjob','change_productionjob','advance_productionjob']
+        roles['Sipariş sorumlusu'] += ['cancel_orderline']
+        inventory_read = ['consumptionrecipe','consumptionrecipeline','productionposting','productioninputsnapshot','quantityreview']
+        roles['Gözlemci'] += ['view_'+m for m in inventory_read]
+        roles['Üretim sorumlusu'] += ['view_'+m for m in inventory_read]+[
+            'add_consumptionrecipe','change_consumptionrecipe','add_consumptionrecipeline','change_consumptionrecipeline',
+            'view_warehouse','view_stockmovement','post_production_stock']
         for name, codes in roles.items():
             group, _ = Group.objects.get_or_create(name=name)
             permissions = Permission.objects.filter(content_type__app_label='erp').exclude(codename__startswith='delete_')

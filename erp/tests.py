@@ -175,13 +175,13 @@ class ERPTests(TestCase):
                 self.assertRedirects(self.client.post(reverse('create',args=[slug]),payload),reverse('listing',args=[slug]))
         order = Order.objects.get(number='WEB-001')
         route = ProductionRoute.objects.get(name='Form rotası')
-        self.assertRedirects(self.client.post('/modul/siparis-kalemleri/yeni/',{'order':order.pk,'product':self.product.pk,'quantity':'2.5','unit_price':'12.40'}),'/modul/siparis-kalemleri/')
+        self.assertRedirects(self.client.post('/modul/siparis-kalemleri/yeni/',{'order':order.pk,'product':self.product.pk,'quantity':'2','unit_price':'12.40'}),'/modul/siparis-kalemleri/')
         self.assertRedirects(self.client.post('/modul/rota-adimlari/yeni/',{'route':route.pk,'sequence':1,'name':'Montaj','workstation':'Tezgah 1','duration_minutes':'15','instructions':'Kontrol ederek birleştirin.'}),'/modul/rota-adimlari/')
         payload = cases[2][1] | {'status':'approved'}
         self.assertRedirects(self.client.post(reverse('edit',args=['siparisler',order.pk]),payload),'/modul/siparisler/')
         order.refresh_from_db()
         self.assertEqual(order.status,'approved')
-        self.assertEqual(order.total,Decimal('31.00'))
+        self.assertEqual(order.total,Decimal('24.80'))
         self.assertEqual(route.steps.count(),1)
         self.assertEqual(stock_balance(self.product),0)
 

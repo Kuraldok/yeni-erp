@@ -1,6 +1,6 @@
 from decimal import Decimal
 from io import BytesIO
-from django.contrib.auth.models import User,Group
+from django.contrib.auth.models import User,Group,Permission
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -188,10 +188,11 @@ class ProductionTests(TestCase):
         call_command('setup_roles',verbosity=0)
         cls.user=User.objects.create_user('ustasi')
         cls.user.groups.add(Group.objects.get(name='Üretim sorumlusu'))
+        cls.user.user_permissions.add(Permission.objects.get(content_type__app_label='erp',codename='track_production_without_stock'))
         cls.product=Product.objects.create(code='Y1',name='Yarı mamul')
 
     def job(self,flow='wood',**kwargs):
-        attrs={'number':f'IE-{ProductionJob.objects.count()+1}','product':self.product,'quantity':2,'unit':'adet','flow':ProductionFlow.objects.get(code=flow),'created_by':self.user}
+        attrs={'stock_mode':'tracking','number':f'IE-{ProductionJob.objects.count()+1}','product':self.product,'quantity':2,'unit':'adet','flow':ProductionFlow.objects.get(code=flow),'created_by':self.user}
         attrs.update(kwargs)
         return ProductionJob.objects.create(**attrs)
 
@@ -299,7 +300,7 @@ class ProductionTests(TestCase):
         previous=self.job()
         self.finish(previous)
         self.client.force_login(self.user)
-        response=self.client.post('/modul/uretim-isleri/yeni/',{'number':'FORM-1','product':self.product.pk,'quantity':'2','unit':'adet','flow':ProductionFlow.objects.get(code='finishing').pk,'assembly_required':'True','preceding_jobs':[previous.pk]})
+        response=self.client.post('/modul/uretim-isleri/yeni/',{'stock_mode':'tracking','number':'FORM-1','product':self.product.pk,'quantity':'2','unit':'adet','flow':ProductionFlow.objects.get(code='finishing').pk,'assembly_required':'True','preceding_jobs':[previous.pk]})
         job=ProductionJob.objects.get(number='FORM-1')
         self.assertRedirects(response,f'/uretim-isi/{job.pk}/')
         self.assertEqual(list(job.preceding_jobs.all()),[previous])

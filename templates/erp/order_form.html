@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static erp_numbers %}
 {% block title %}{% if editing %}Siparişi düzenle{% else %}Yeni Sipariş{% endif %} · Kural Döküm{% endblock %}
 {% block content %}
 <a class="back" href="{% url 'listing' 'siparisler' %}">← Siparişler</a>
@@ -22,10 +22,11 @@
       {% if can_add_lines %}<template data-empty-line>{% include 'erp/order_line_row.html' with line=formset.empty_form %}</template>{% endif %}
     {% else %}
       {% if order.status != 'draft' %}<p class="notice">Kalemleri değiştirmek için önce siparişi taslağa alıp kaydedin.</p>{% elif can_view_lines %}<p class="hint">Kalem eklemek veya düzenlemek için ürün görüntüleme ve sipariş kalemi izinleri gerekir.</p>{% endif %}
-      {% if can_view_lines %}<div class="table-wrap"><table><thead><tr><th>Ürün</th><th>Miktar</th><th>Birim fiyat</th><th>Toplam</th></tr></thead><tbody>{% for line in existing_lines %}<tr><td>{{ line.product }}</td><td>{{ line.quantity }} {{ line.product.get_unit_display }}</td><td>{{ line.unit_price }}</td><td>{{ line.total }}</td></tr>{% empty %}<tr><td colspan="4">Henüz kalem yok.</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+      {% if can_view_lines %}<div class="table-wrap"><table><thead><tr><th>Ürün</th><th>Miktar</th><th>Birim fiyat</th><th>Toplam</th></tr></thead><tbody>{% for line in existing_lines %}<tr><td>{{ line.product }}</td><td>{{ line.quantity|count_amount:line.product.unit }} {{ line.product.get_unit_display }}</td><td>{{ line.unit_price }}</td><td>{{ line.total }}</td></tr>{% empty %}<tr><td colspan="4">Henüz kalem yok.</td></tr>{% endfor %}</tbody></table></div>{% endif %}
     {% endif %}
   </section>
   <div class="form-actions"><button class="button" type="submit" data-save-order>Kaydet</button><a href="{% url 'listing' 'siparisler' %}">Vazgeç</a></div>
 </form>
+{% if cancelled_lines %}<section class="panel"><h2>İptal edilen kalemler</h2><p class="hint">Bu satırlar sipariş toplamına katılmaz.</p><div class="table-wrap"><table><thead><tr><th>Ürün</th><th>Miktar</th><th>İptal eden</th><th>Tarih</th><th>Neden</th></tr></thead><tbody>{% for line in cancelled_lines %}<tr><td>{{ line.product }}</td><td>{{ line.quantity|count_amount:line.product.unit }}</td><td>{{ line.cancelled_by }}</td><td>{{ line.cancelled_at|date:'d.m.Y H:i' }}</td><td class="wrap">{{ line.cancellation_reason }}</td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
 {% if can_manage_lines %}{{ selection|json_script:'order-selection-data' }}<script src="{% static 'order-entry.js' %}" defer></script>{% endif %}
 {% endblock %}

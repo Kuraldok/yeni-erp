@@ -19,6 +19,14 @@
     const product = selection.products.find(item => String(item.id) === field.value);
     const unit = (field.closest('.order-line-row') || field.closest('.field')).querySelector('[data-product-unit]');
     if (unit) unit.textContent = product ? product.unit : '';
+    const row = field.closest('.order-line-row');
+    const amount = row ? row.querySelector('input[name$="-quantity"]') : editor.querySelector('#id_quantity');
+    if (amount) {
+      const count = product && product.unit.toLocaleLowerCase('tr-TR') === 'adet';
+      amount.step = count ? '1' : '0.001';
+      if (count && amount.value && Number.isSafeInteger(Number(amount.value))) amount.value = String(Number(amount.value));
+      amount.min = count ? '1' : '0.001';
+    }
   }
 
   function updateChoices(field) {

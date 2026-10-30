@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% load erp_numbers %}{% block content %}
+<a class="back" href="{% url 'listing' 'siparis-kalemleri' %}?order={{ line.order_id }}">← Sipariş kalemleri</a>
+<h1>Sipariş kalemini iptal et</h1>
+<section class="panel form-panel">
+  <p><strong>{{ line.order.number }}</strong> · {{ line.product }}</p>
+  <p>{{ line.quantity|count_amount:line.product.unit }} {{ line.product.get_unit_display }} · Birim fiyat: {{ line.unit_price }}</p>
+  {% if line.status == 'cancelled' %}<p class="notice">Bu kalem {{ line.cancelled_at|date:'d.m.Y H:i' }} tarihinde {{ line.cancelled_by }} tarafından iptal edildi. {{ line.cancellation_reason }}</p>
+  {% else %}
+  <p class="notice">Kalem geçmişte korunacak ve sipariş toplamından çıkarılacak. İptal eden kullanıcı, tarih ve neden kaydedilecek. Sipariş taslak olmalıdır.</p>
+  <form method="post">{% csrf_token %}{{ form.as_p }}<button class="button" type="submit">Kalemi iptal et</button></form>
+  {% endif %}
+</section>
+{% endblock %}

@@ -11,6 +11,7 @@ from .models import (
     CatalogImport, MaterialRecipe, MaterialRequirement, Order, OrderLine, Partner,
     Product, ProductionFlow, ProductionJob, ProductionRoute, RouteStep,
     StockMovement, Warehouse,
+    AuditEvent, ConsumptionRecipe, ConsumptionRecipeLine, ProductionPosting, QuantityReview,
 )
 from .production import advance_job, material_plan
 from .registry import MODULES
@@ -69,7 +70,7 @@ class DirectGrillRoutingTests(TestCase):
         self.assertEqual(issues, [])
         self.assertEqual(rows[0]['required'], Decimal('16.8'))
         route = ProductionRoute.objects.get()
-        job = ProductionJob.objects.create(number='G-JOB', product=route.product, quantity=2,
+        job = ProductionJob.objects.create(stock_mode='tracking',number='G-JOB', product=route.product, quantity=2,
             unit='adet', flow=route.flow, recipe=recipe, casting_material='aluminium', created_by=self.user)
         advance_job(job.pk, self.user, 'start')
         job.refresh_from_db()
@@ -89,7 +90,7 @@ class DirectGrillRoutingTests(TestCase):
         line.refresh_from_db()
         self.assertIn('Bileşen Kodu boş.', line.issues)
         route = ProductionRoute.objects.get()
-        job = ProductionJob.objects.create(number='G-MISSING', product=route.product, quantity=1,
+        job = ProductionJob.objects.create(stock_mode='tracking',number='G-MISSING', product=route.product, quantity=1,
             unit='adet', flow=route.flow, recipe=recipe, casting_material='aluminium', created_by=self.user)
         with self.assertRaises(ValidationError):
             advance_job(job.pk, self.user, 'start')
@@ -152,11 +153,16 @@ class GroupFilteringTests(TestCase):
             route = ProductionRoute.objects.create(product=product, name=f'Rota {suffix}', version=1,
                 flow=flow, supply_method='manufacture')
             step = RouteStep.objects.create(route=route, sequence=1, name=f'Adım {suffix}', workstation='Ahşap')
-            job = ProductionJob.objects.create(number=f'IE-{suffix}', product=product, quantity=1,
+            job = ProductionJob.objects.create(stock_mode='tracking',number=f'IE-{suffix}', product=product, quantity=1,
                 unit='adet', flow=flow, created_by=cls.user)
+            consumption = ConsumptionRecipe.objects.create(product=product,name=f'Tüketim {suffix}',unit='adet')
+            consumption_line = ConsumptionRecipeLine.objects.create(recipe=consumption,product=component,quantity=1,unit='adet')
+            posting = ProductionPosting.objects.create(job=job,quantity=1,unit='adet',recipe_label=str(consumption),input_warehouse=warehouse,output_warehouse=warehouse,created_by=cls.user)
+            review = QuantityReview.objects.create(model_label='erp.stockmovement',object_id=str(movement.pk),field_name='quantity',quantity=Decimal('1.5'))
+            audit = AuditEvent.objects.filter(model_label='erp.product',object_id=str(product.pk),action='create').first()
             cls.records[suffix] = {'product':product, 'component':component, 'warehouse':warehouse,
                 'movement':movement, 'partner':partner, 'order':order, 'line':line,
-                'flow':flow, 'route':route, 'step':step, 'job':job}
+                'flow':flow, 'route':route, 'step':step, 'job':job,'consumption':consumption,'consumption_line':consumption_line,'posting':posting,'review':review,'audit':audit}
 
     def setUp(self):
         self.client.force_login(self.user)
@@ -180,6 +186,11 @@ class GroupFilteringTests(TestCase):
             'uretim-akislari':(a['flow'].pk,b['flow'].pk),
             'uretim-isleri':(a['job'].pk,b['job'].pk),
             'rota-adimlari':(a['step'].pk,b['step'].pk),
+            'tuketim-receteleri':(a['consumption'].pk,b['consumption'].pk),
+            'tuketim-girdileri':(a['consumption_line'].pk,b['consumption_line'].pk),
+            'uretim-stok-fisleri':(a['posting'].pk,b['posting'].pk),
+            'miktar-incelemeleri':(a['review'].pk,b['review'].pk),
+            'islem-gecmisi':(a['audit'].pk,b['audit'].pk),
         }
         self.assertEqual(set(pairs), set(MODULES))
         for slug, (included, excluded) in pairs.items():
@@ -204,7 +215,7 @@ class GroupFilteringTests(TestCase):
     def test_group_and_search_survive_non_product_pagination(self):
         product = self.records['A']['product']
         ProductionJob.objects.bulk_create([
-            ProductionJob(number=f'SEARCH-{i:02}', product=product, quantity=1, unit='adet',
+            ProductionJob(stock_mode='tracking',number=f'SEARCH-{i:02}', product=product, quantity=1, unit='adet',
                 flow=self.records['A']['flow'], created_by=self.user) for i in range(28)
         ])
         url = reverse('listing', args=['uretim-isleri'])
