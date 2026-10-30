@@ -61,7 +61,7 @@ def listing(request, slug):
     can_filter = can_filter_groups(request.user, model)
     groups = available_groups(request.user) if can_filter else []
     if model is Product:
-        qs = main_products()
+        qs = main_products() if slug=='urunler' else Product.objects.all()
         qs = qs.prefetch_related('materialrecipe_set')
     qs = filter_by_group(qs, category, request.user)
     order_filter = ''
@@ -117,11 +117,12 @@ def listing(request, slug):
                 if obj.category:
                     names.add(obj.category)
                 value = ', '.join(sorted(names)) or '—'
+            if model is OrderLine and field=='product':value=f'{obj.product_code or obj.product.code} · {obj.product_name or obj.product.name}'
             if isinstance(value, bool): value = 'Evet' if value else 'Hayır'
             if isinstance(value,list): value = ' · '.join(str(v) for v in value) if value else 'İnceleme notu yok'
             if isinstance(value,dict): value = f"{value.get('rows',0)} satır · {value.get('rows_with_issues',0)} inceleme"
             values.append(value)
-        detail_names={'urunler':'product_detail','rotalar':'route_detail','receteler':'recipe_detail','excel-aktarimlari':'catalog_report','uretim-akislari':'flow_detail','uretim-isleri':'production_job','tuketim-receteleri':'consumption_recipe_detail','islem-gecmisi':'audit_detail','uretim-stok-fisleri':'production_posting_detail'}
+        detail_names={'stok-kartlari':'stock_card_detail','stok-belgeleri':'stock_document_detail','siparisler':'order_tracking','urunler':'product_detail','rotalar':'route_detail','receteler':'recipe_detail','excel-aktarimlari':'catalog_report','uretim-akislari':'flow_detail','uretim-isleri':'production_job','tuketim-receteleri':'consumption_recipe_detail','islem-gecmisi':'audit_detail','uretim-stok-fisleri':'production_posting_detail'}
         detail=reverse(detail_names[slug],args=[obj.pk]) if slug in detail_names else ''
         editable=model is not ProductionJob or obj.state=='draft'
         if model is OrderLine:
@@ -131,8 +132,8 @@ def listing(request, slug):
         if model is ConsumptionRecipeLine:
             editable=not obj.recipe.locked
         cancel_url = reverse('cancel_order_line',args=[obj.pk]) if model is OrderLine and editable and request.user.has_perm('erp.cancel_orderline') else ''
-        rows.append({'pk':obj.pk, 'values':values,'detail':detail,'editable':editable,'cancel_url':cancel_url,'product_detail':detail if model is Product else ''})
-    return render(request,'erp/list.html', {'title':title,'slug':slug,'has_detail':slug in ['urunler','rotalar','receteler','excel-aktarimlari','uretim-akislari','uretim-isleri','tuketim-receteleri','islem-gecmisi','uretim-stok-fisleri'],'headers':headers,'rows':rows,'page':page,'q':search,'groups':groups,'category':category,'can_filter_groups':can_filter,'order_filter':order_filter,'selected_order':selected_order,'recipe_filter':recipe_filter,'can_cancel':model is OrderLine and request.user.has_perm('erp.cancel_orderline'),'can_add':model not in READ_ONLY_MODELS and permitted(request.user,'add',model),'can_edit':model not in READ_ONLY_MODELS and model is not StockMovement and permitted(request.user,'change',model)})
+        rows.append({'pk':obj.pk, 'values':values,'detail':detail,'editable':editable,'cancel_url':cancel_url,'product_detail':detail if model is Product else '', 'release_url':reverse('release_stockreservation',args=[obj.pk]) if slug=='rezervasyonlar' and obj.state=='active' and obj.order_line_id and request.user.has_perm('erp.release_stockreservation') else ''})
+    return render(request,'erp/list.html', {'title':title,'slug':slug,'has_detail':slug in ['stok-kartlari','stok-belgeleri','siparisler','urunler','rotalar','receteler','excel-aktarimlari','uretim-akislari','uretim-isleri','tuketim-receteleri','islem-gecmisi','uretim-stok-fisleri'],'headers':headers,'rows':rows,'page':page,'q':search,'groups':groups,'category':category,'can_filter_groups':can_filter,'order_filter':order_filter,'selected_order':selected_order,'recipe_filter':recipe_filter,'can_cancel':(model is OrderLine and request.user.has_perm('erp.cancel_orderline')) or slug=='rezervasyonlar','can_add':model not in READ_ONLY_MODELS and permitted(request.user,'add',model),'can_edit':model not in READ_ONLY_MODELS and model is not StockMovement and permitted(request.user,'change',model)})
 
 
 @login_required
@@ -193,6 +194,9 @@ def edit(request, slug, pk=None):
     if model is OrderLine:
         from .order_views import edit_order_line
         return edit_order_line(request, pk)
+    if slug=='stok-belgeleri' and pk is None:
+        if not permitted(request.user,'add',model):raise PermissionDenied
+        return redirect('create_stock_document')
     if model in READ_ONLY_MODELS: raise PermissionDenied
     if model is StockMovement and pk is not None: raise PermissionDenied
     action = 'change' if pk is not None else 'add'
@@ -234,12 +238,22 @@ def edit(request, slug, pk=None):
         if route.supply_method=='purchase' or not route.flow_id:
             raise PermissionDenied('Bu rota üretim işi açmaya uygun değil.')
         initial={'route':route.pk,'product':route.product_id,'flow':route.flow_id,'unit':route.product.unit}
+    if model is ProductionJob and request.method=='GET' and pk is None and request.GET.get('order_line'):
+        if not request.user.has_perm('erp.link_production_orders') and not all(request.user.has_perm('erp.'+code) for code in ('view_order','view_orderline')):raise PermissionDenied
+        line=get_object_or_404(OrderLine,pk=request.GET['order_line'],status='active',order__kind='sale')
+        initial.update(order_line=line.pk,product=line.product_id,unit=line.unit,quantity=line.remaining_quantity)
     form = Form(request.POST or None, instance=obj, initial=initial)
     # Do not leak names of related records through selectors without view permission.
-    for field in form.fields.values():
+    for field_name,field in form.fields.items():
+        if model is ProductionJob and field_name=='order_line' and request.user.has_perm('erp.link_production_orders'):
+            continue
         if isinstance(field, forms.ModelChoiceField) and not permitted(request.user,'view',field.queryset.model):
             field.queryset = field.queryset.none()
+        if isinstance(field,forms.ModelChoiceField) and field.queryset.model is Product and model in (StockMovement,ProductionJob,ConsumptionRecipe,ConsumptionRecipeLine):
+            field.queryset=field.queryset.filter(Q(active=True)|Q(pk=obj.product_id if pk else None))
     if model is ProductionJob:
+        form.fields['order_line'].label_from_instance=lambda line:f'{line.order.number} · {line.product_code or line.product.code} · {line.quantity} {line.unit}'
+        form.fields['order_line'].queryset=form.fields['order_line'].queryset.filter(status='active',order__kind='sale',order__status__in=['draft','approved'])
         form.fields['preceding_jobs'].queryset = form.fields['preceding_jobs'].queryset.exclude(pk=obj.pk)
         if not request.user.has_perm('erp.track_production_without_stock') and (pk is None or obj.stock_mode != 'tracking'):
             form.fields['stock_mode'].choices = [('inventory','Üretim ve stok')]
@@ -359,19 +373,21 @@ def route_detail(request,pk):
 @login_required
 def production_job(request,pk):
     from .production import advance_job,material_plan
+    from .stock import material_plan as stock_material_plan
     if not request.user.has_perm('erp.view_productionjob'):raise PermissionDenied
     job=get_object_or_404(ProductionJob.objects.select_related('flow','product','recipe'),pk=pk)
     steps=list(job.steps.select_related('completed_by').all())
+    can_stock_plan=all(request.user.has_perm('erp.'+code) for code in ('view_product','view_warehouse','view_stockmovement','view_stockreservation','view_productioninputsnapshot'))
     current=next((s for s in steps if not s.completed_at),None)
     last_inventory_step=job.stock_mode=='inventory' and job.state=='running' and sum(s.completed_at is None for s in steps)==1
     from .inventory_views import ProductionCompletionForm
-    completion_form=ProductionCompletionForm(request.POST if request.method=='POST' else None,unit=job.unit,initial={'actual_quantity':job.quantity}) if last_inventory_step else None
+    completion_form=ProductionCompletionForm(request.POST if request.method=='POST' else None,unit=job.unit,job=job,initial={'actual_quantity':job.remaining_quantity}) if last_inventory_step else None
     if request.method=='POST':
         if not request.user.has_perm('erp.advance_productionjob'):raise PermissionDenied
         if completion_form is not None and not completion_form.is_valid():
-            return render(request,'erp/job.html',{'job':job,'steps':steps,'current':current,'completion_form':completion_form,'stock_inputs':job.stock_inputs.select_related('product'),'rows':[],'problems':[]})
+            return render(request,'erp/job.html',{'job':job,'steps':steps,'current':current,'completion_form':completion_form,'stock_inputs':job.stock_inputs.select_related('product'),'postings':job.stock_postings.select_related('reversal'),'net_plan':stock_material_plan(job) if can_stock_plan and job.stock_mode=='inventory' else [],'slug':'uretim-isleri','rows':[],'problems':[]})
         try:
-            message=advance_job(job.pk,request.user,request.POST.get('expected',''),actual_quantity=completion_form.cleaned_data['actual_quantity'] if completion_form is not None else None)
+            message=advance_job(job.pk,request.user,request.POST.get('expected',''),actual_quantity=completion_form.cleaned_data['actual_quantity'] if completion_form is not None else None,**(completion_form.batch_kwargs() if completion_form else {}))
         except ValidationError as exc:
             for message in exc.messages:messages.error(request,message)
         except OperationalError:
@@ -381,4 +397,4 @@ def production_job(request,pk):
     rows,problems=([],[])
     if job.recipe_id and request.user.has_perm('erp.view_materialrequirement') and request.user.has_perm('erp.view_materialrecipe'):
         rows,problems=material_plan(job.recipe,job.quantity)
-    return render(request,'erp/job.html',{'job':job,'steps':steps,'current':current,'rows':rows,'problems':problems,'completion_form':completion_form,'stock_inputs':job.stock_inputs.select_related('product')})
+    return render(request,'erp/job.html',{'job':job,'steps':steps,'current':current,'rows':rows,'problems':problems,'completion_form':completion_form,'stock_inputs':job.stock_inputs.select_related('product'),'postings':job.stock_postings.select_related('reversal'),'net_plan':stock_material_plan(job) if can_stock_plan and job.stock_mode=='inventory' else [],'slug':'uretim-isleri'})

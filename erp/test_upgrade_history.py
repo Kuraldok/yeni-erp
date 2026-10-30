@@ -9,7 +9,7 @@ from django.test import TransactionTestCase
 class HistoryUpgradeTests(TransactionTestCase):
     def test_existing_records_are_kept_fractional_counts_flagged_without_retroactive_stock_or_actor(self):
         previous=[('erp','0003_product_supply_method_productionjob_route_and_more')]
-        current=[('erp','0005_preserve_history_and_flag_counts')]
+        current=[('erp','0011_reversal_value_adjustment')]
         executor=MigrationExecutor(connection)
         executor.migrate(previous)
         apps=executor.loader.project_state(previous).apps

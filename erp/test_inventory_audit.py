@@ -259,6 +259,7 @@ class InventoryAuditTests(TestCase):
         line.save()
         recipe.confirmed=True
         recipe.save()
+        self.stock(self.raw,100)
         advance_job(job.pk,self.admin,'start')
         self.assertEqual(job.stock_inputs.count(),1)
 
@@ -272,6 +273,7 @@ class InventoryAuditTests(TestCase):
         recipe.confirmed=True
         recipe.save()
         job=self.job(recipe)
+        self.stock(self.raw,100)
         advance_job(job.pk,self.admin,'start')
         line.quantity=3
         with self.assertRaises(ValidationError):line.save()
@@ -297,12 +299,12 @@ class InventoryAuditTests(TestCase):
         self.assertEqual(ProductionPosting.objects.count(),1)
 
     def test_short_stock_leaves_last_step_posting_and_audit_unchanged(self):
-        self.stock(self.raw,4)
+        self.stock(self.raw,10)
         job=self.job()
         last=self.last_step(job)
         audit_before=AuditEvent.objects.count()
         movements_before=StockMovement.objects.count()
-        with self.assertRaises(ValidationError):advance_job(job.pk,self.admin,str(last.pk),actual_quantity=2)
+        with self.assertRaises(ValidationError):advance_job(job.pk,self.admin,str(last.pk),actual_quantity=3)
         job.refresh_from_db()
         last.refresh_from_db()
         self.assertEqual(job.state,'running')

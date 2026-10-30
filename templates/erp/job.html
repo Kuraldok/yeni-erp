@@ -7,23 +7,24 @@
 {% else %}<p class="notice">Bu iş yalnızca aşama takibidir; stok hareketi oluşturmaz. Eski işlere geriye dönük stok işlemi uygulanmaz.</p>{% endif %}
 <div class="dashboard-grid">
 <section class="panel"><h2>Üretim ilerlemesi</h2>
-{% if job.state == 'draft' %}<p>İş emri başlatıldığında rota ve doğrulanmış tüketim girdileri işe kopyalanır.</p>
+{% if job.state == 'draft' %}<p>İş emri başlatıldığında rota ve tüketim girdileri işe kopyalanır; gereken serbest stok ayrılır.</p>
 {% else %}<ol class="flow-steps">{% for step in steps %}<li><strong>{{ step.name }}</strong>{% if step.completed_at %}<span class="badge success">Tamamlandı</span><small>{{ step.completed_at|date:'d.m.Y H:i' }} · {{ step.completed_by }}</small>{% elif step.pk == current.pk %}<span class="badge warning">Sıradaki aşama</span>{% else %}<span class="badge">Bekliyor</span>{% endif %}</li>{% endfor %}</ol>{% endif %}
-{% if perms.erp.advance_productionjob and job.state != 'completed' %}<form method="post">{% csrf_token %}<input type="hidden" name="expected" value="{% if job.state == 'draft' %}start{% else %}{{ current.pk }}{% endif %}">
+{% if perms.erp.advance_productionjob and job.state != 'completed' and job.state != 'cancelled' %}<form method="post">{% csrf_token %}<input type="hidden" name="expected" value="{% if job.state == 'draft' %}start{% else %}{{ current.pk }}{% endif %}">
 {% if completion_form %}<div class="field">{{ completion_form.as_p }}<small>Birim: {{ job.get_unit_display }}. Bu kayıt tüketim çıkışları ve ürün girişini birlikte oluşturur.</small></div>{% endif %}
-<button class="button">{% if job.state == 'draft' %}İş emrini başlat{% else %}{{ current.name }} aşamasını tamamla{% endif %}</button></form>{% endif %}
+<button class="button">{% if job.state == 'draft' %}İş emrini başlat{% else %}{% if completion_form %}Üretim partisini kaydet{% else %}{{ current.name }} aşamasını tamamla{% endif %}{% endif %}</button></form>{% endif %}
 {% if job.actual_quantity != None %}<p>Gerçekleşen: {{ job.actual_quantity|requirement_amount:job.unit }} {{ job.get_unit_display }}</p>{% if perms.erp.view_productionposting %}<a href="{% url 'production_posting_detail' job.stock_posting.pk %}">Üretim stok fişi →</a>{% endif %}{% endif %}
 </section>
 <section class="panel"><h2>İş emri bilgileri</h2>
 {% if job.route_id %}<p>Ürün rotası: {% if perms.erp.view_productionroute %}<a href="{% url 'route_detail' job.route_id %}">{{ job.route }}</a>{% else %}{{ job.route.name }}{% endif %}</p>{% elif job.product.supply_method == 'manufacture' %}<p class="hint">Başlatılırken karta bağlı uygun etkin rota kullanılacak.</p>{% endif %}
 <p>Döküm hammaddesi: {{ job.get_casting_material_display|default:'Bu akışta kullanılmıyor' }}</p><p>Montaj: {{ job.assembly_required|yesno:'Gerekli,Gerekmiyor,Belirtilmedi' }}</p>
 <p>Girdi deposu: {{ job.input_warehouse|default:'Seçilmedi' }}</p><p>Ürün deposu: {{ job.output_warehouse|default:'Seçilmedi' }}</p>
-<h2>Bağlı önceki işler</h2><ul>{% for previous in job.preceding_jobs.all %}<li><a href="{% url 'production_job' previous.pk %}">{{ previous.number }}</a> · {{ previous.get_state_display }}</li>{% empty %}<li>Önceki iş bağlanmadı.</li>{% endfor %}</ul><p>{{ job.note }}</p>
+{% if job.order_line_id %}<p>Satış siparişi: {{ job.order_line.order.number }} · kalem {{ job.order_line_id }}</p>{% endif %}<p>Kalan üretim: {{ job.open_quantity|count_amount:job.unit }} {{ job.unit }}</p><h2>Bağlı önceki işler</h2><ul>{% for previous in job.preceding_jobs.all %}<li><a href="{% url 'production_job' previous.pk %}">{{ previous.number }}</a> · {{ previous.get_state_display }}</li>{% empty %}<li>Önceki iş bağlanmadı.</li>{% endfor %}</ul><p>{{ job.note }}</p>
 </section></div>
 {% if job.stock_mode == 'inventory' %}<section class="panel"><h2>Stok tüketim reçetesi</h2>
 {% if job.consumption_recipe_id %}{% if perms.erp.view_consumptionrecipe and perms.erp.view_consumptionrecipeline %}<p><a href="{% url 'consumption_recipe_detail' job.consumption_recipe_id %}">{{ job.consumption_recipe }}</a></p>{% else %}<p>Tüketim reçetesi seçildi.</p>{% endif %}
 {% else %}<p class="notice">Doğrudan tüketim reçetesini oluşturup iş emrinde seçin. Hammaddenin yarı mamullere dağılımı tahmin edilmez.</p>{% if perms.erp.add_consumptionrecipe %}<a href="{% url 'create' 'tuketim-receteleri' %}?product={{ job.product_id }}">Bu ürün için tüketim reçetesi oluştur →</a>{% endif %}{% endif %}
 {% if stock_inputs and perms.erp.view_productioninputsnapshot %}<h2>Başlangıçta kaydedilen tüketim kopyası</h2><div class="table-wrap"><table><thead><tr><th>Girdi</th><th>Bir çıktı için</th><th>Birim</th></tr></thead><tbody>{% for input in stock_inputs %}<tr><td>{{ input.product_label }}</td><td>{{ input.quantity|requirement_amount:input.unit }}</td><td>{{ input.unit }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
 </section>{% endif %}
+{% include 'erp/job_operations.html' %}
 <section class="panel"><h2>Kaynak Excel reçetesi</h2>{% if job.recipe_id and perms.erp.view_materialrecipe and perms.erp.view_materialrequirement %}<p><a href="{% url 'recipe_detail' job.recipe_id %}?quantity={{ job.quantity|unlocalize }}">{{ job.recipe }} · Kaynak ihtiyaç hesabı →</a></p>{% if problems %}<p class="notice">Kaynakta inceleme notları bulunuyor. Stok tüketimi ayrı doğrulanmış tüketim reçetesinden yapılır.</p>{% endif %}{% else %}<p>Kaynak reçete seçilmedi veya görüntüleme yetkiniz yok.</p>{% endif %}</section>
 {% endblock %}

@@ -12,3 +12,13 @@
 - İlk yönetici hesabı otomatik oluşturulmadı; kullanıcı `createsuperuser` ile kendi hesabını oluşturmalı.
 - Mevcut iş verileri silinmedi. GitHub'a push veya yayın yapılmadı.
 - Bulut taslağında `install_script` ve `start_skill` kaydedildi. Taslak kaydı yayımlama değildir; gelecekte etkinleştirmek için ortam ayarlarında inceleyip kaydetmek ve ortamı yayımlamak gerekir. Kullanıcının isteği gereği yayımlama yapılmadı.
+
+
+## Operasyon geliştirmeleri — 30 Ekim 2026
+
+- Geliştirme ortamında 196 test geçti; Django kontrolü ve migration tutarlılığı başarılı.
+- Ek kapsam: döküm alternatifi, pasif kart, sipariş birim kopyası, bileşen kart yönetimi, net ihtiyaç, rezervasyon, kısmi partiler, fire ve gerçek tüketim, iş iptali, üretim ters fişi, kısmi teslimat ve mal kabul, otomatik sipariş kapatma, transfer, sayım ve eski sayım taslağı, değer koruma, bilinmeyen maliyet, rapor/CSV, yetkiler ve hatada tam geri alma.
+- Eski `0005` şemasından tamamlanmış üretim, stok ve sipariş içeren örneğin geçişi doğrulandı; özgün değerler, tarihler ve kullanıcılar korundu, fiyat ve tarihçe üretilmedi.
+- Chromium'da ayrı sentetik veritabanıyla sipariş → bağlı üretim → iki parti ve fire → kısmi teslimatlar → teslimat ters fişi → rezervasyon/bırakma → üretim ters fişi → iş iptali → transfer → sayım → rapor/CSV akışı tamamlandı.
+- Masaüstü ve mobil ekran boyutlarında taşma ve JavaScript hatası görülmedi. Fiziksel cihaz ve PostgreSQL yük/eşzamanlılık testi bu çalışmada yapılmadı.
+- Güncel operasyon geliştirmeleri yerelde doğrulandı; GitHub'a aktarım ve sunucuya dağıtım bu adımın kapsamında değildir.

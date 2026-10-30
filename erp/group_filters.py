@@ -8,6 +8,7 @@ from .models import (
     Product, ProductionFlow, ProductionJob, ProductionRoute, RouteStep,
     StockMovement, Warehouse,
     AuditEvent, QuantityReview, ConsumptionRecipe, ConsumptionRecipeLine, ProductionPosting,
+    StockDocument, StockDocumentLine, StockReservation,
 )
 
 
@@ -23,6 +24,8 @@ FILTER_PERMISSIONS = {
     CatalogImport: ('view_materialrecipe', 'view_materialrequirement'),
     ConsumptionRecipe: ('view_product',), ConsumptionRecipeLine: ('view_product','view_consumptionrecipe'),
     ProductionPosting: ('view_product','view_productionjob'), AuditEvent: (), QuantityReview: (),
+    StockDocument: ('view_product','view_stockdocumentline'),StockReservation:('view_product',),
+    StockDocumentLine:('view_product',),
 }
 
 
@@ -88,10 +91,15 @@ def grouped_records(model, category=None):
         return model.objects.filter(recipe__in=grouped_records(ConsumptionRecipe,category))
     if model is ProductionPosting:
         return model.objects.filter(job__in=grouped_records(ProductionJob,category))
+    if model is StockReservation:
+        return model.objects.filter(product__in=products)
+    if model is StockDocumentLine:return model.objects.filter(product__in=products)
+    if model is StockDocument:
+        return model.objects.filter(Q(pk__in=StockDocumentLine.objects.filter(product__in=products).values('document_id'))|Q(production_posting__job__product__in=products))
     if model in (AuditEvent,QuantityReview):
         matches = Q(pk__in=[])
         for target in (Product,Warehouse,StockMovement,Partner,Order,OrderLine,ProductionRoute,RouteStep,
-                MaterialRecipe,MaterialRequirement,CatalogImport,ProductionFlow,ProductionJob,ConsumptionRecipe,ConsumptionRecipeLine,ProductionPosting):
+                MaterialRecipe,MaterialRequirement,CatalogImport,ProductionFlow,ProductionJob,ConsumptionRecipe,ConsumptionRecipeLine,ProductionPosting,StockDocument,StockDocumentLine,StockReservation):
             identities = grouped_records(target,category).annotate(identity=Cast('pk',CharField())).values('identity')
             matches |= Q(model_label=target._meta.label_lower,object_id__in=identities)
         return model.objects.filter(matches)

@@ -11,11 +11,12 @@ def selection_pk(value):
     return number if 0 < number <= 9223372036854775807 else None
 
 
-def order_products(kind):
+def order_products(kind, include_inactive=False):
     if kind == 'sale':
-        return order_product_cards(main_products())
+        return order_product_cards(main_products() if include_inactive else main_products().filter(active=True))
     if kind == 'purchase':
-        return Product.objects.filter(kind='raw').order_by('category', 'code', 'pk')
+        products = Product.objects.filter(kind='raw')
+        return (products if include_inactive else products.filter(active=True)).order_by('category', 'code', 'pk')
     return Product.objects.none()
 
 

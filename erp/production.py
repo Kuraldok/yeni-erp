@@ -28,10 +28,15 @@ def material_plan(recipe, quantity):
 
 @with_actor
 @transaction.atomic
-def advance_job(job_id, actor, expected, actual_quantity=None):
+def advance_job(job_id, actor, expected, actual_quantity=None, **batch):
     if not actor or not actor.has_perm('erp.advance_productionjob'):
         raise PermissionDenied('Üretim ilerletme yetkiniz yok.')
+    from .stock import lock_order_line
+    identity=ProductionJob.objects.only('order_line_id').get(pk=job_id)
+    if identity.order_line_id:lock_order_line(identity.order_line_id)
     job=ProductionJob.objects.select_for_update(of=('self',)).select_related('flow','product','recipe','route').get(pk=job_id)
+    if job.order_line_id!=identity.order_line_id:raise ValidationError('Sipariş bağlantısı değişti; sayfayı yenileyin.')
+    if job.state=='cancelled':raise ValidationError('İptal edilmiş iş ilerletilemez.')
     if job.state=='completed': raise ValidationError('İş emri zaten tamamlandı.')
     pending=job.steps.filter(completed_at__isnull=True).order_by('sequence').first()
     token='start' if job.state=='draft' else str(pending.pk) if pending else ''
@@ -59,6 +64,8 @@ def advance_job(job_id, actor, expected, actual_quantity=None):
         if job.stock_mode == 'inventory':
             from .inventory import prepare_production_inputs
             prepare_production_inputs(job)
+            from .stock import refresh_job_reservations
+            refresh_job_reservations(job,actor,strict=True)
         if job.route_id:
             definitions=list(job.route.steps.all())
         else:
@@ -75,7 +82,10 @@ def advance_job(job_id, actor, expected, actual_quantity=None):
         if actual_quantity is None:
             raise ValidationError('Son aşamada gerçekleşen üretim miktarını girin.')
         from .inventory import post_production
-        post_production(job,actor,actual_quantity)
+        posting=post_production(job,actor,actual_quantity,**batch)
+        job.refresh_from_db()
+        if not posting._closed:
+            return f'Parti {posting.sequence} kaydedildi. Kalan üretim: {job.remaining_quantity} {job.unit}.'
     step.completed_at=timezone.now()
     step.completed_by=actor
     step.save(update_fields=['completed_at','completed_by'])

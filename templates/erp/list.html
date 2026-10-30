@@ -4,10 +4,11 @@
 <div class="page-heading">
   <div><p class="eyebrow">KAYIT YÖNETİMİ</p><h1>{{ title }}</h1><p class="muted">{{ page.paginator.count }} {% if slug == 'urunler' %}ana ürün{% else %}kayıt{% endif %}</p></div>
   {% if slug == 'excel-aktarimlari' and perms.erp.add_catalogimport %}<a class="button" href="{% url 'catalog_upload' %}">Excel aktar</a>{% endif %}
+  {% if slug == 'stok-belgeleri' and perms.erp.add_stockdocument %}<a class="button" href="{% url 'create_stock_document' %}">+ Yeni stok belgesi</a>{% endif %}
   {% if can_add %}<a class="button" href="{% url 'create' slug %}{% if order_filter %}?order={{ order_filter|urlencode }}{% elif recipe_filter %}?recipe={{ recipe_filter|urlencode }}{% endif %}">{% if slug == 'siparisler' %}Yeni Sipariş{% else %}+ Yeni kayıt{% endif %}</a>{% endif %}
 </div>
 {% if slug == 'urunler' %}
-<p class="notice">Bu listede ana ürünler yer alır. Ürün koduna veya adına tıklayarak yarı mamul, hammadde ve reçete ayrıntılarını yeni sekmede açabilirsiniz.</p>
+<p class="notice">Bu listede ana ürünler yer alır. <a href="{% url 'listing' 'stok-kartlari' %}">Tüm stok kartları →</a> Ürün koduna veya adına tıklayarak yarı mamul, hammadde ve reçete ayrıntılarını yeni sekmede açabilirsiniz.</p>
 {% elif slug == 'stok' %}
 <p class="notice">Stok hareketleri değiştirilemez veya silinemez. Düzeltme için açıklama yazarak ters yönde yeni hareket kaydedin.</p>
 {% elif slug == 'siparisler' or slug == 'siparis-kalemleri' %}
@@ -28,7 +29,7 @@
     <thead><tr>{% for header in headers %}<th>{{ header|capfirst }}</th>{% endfor %}{% if can_edit or has_detail or can_cancel %}<th>İşlem</th>{% endif %}</tr></thead>
     <tbody>{% for row in rows %}<tr>
       {% for value in row.values %}<td>{% if row.product_detail and forloop.counter <= 2 %}<a href="{{ row.product_detail }}" target="_blank" rel="noopener" title="Ürün ayrıntılarını yeni sekmede aç">{{ value|default_if_none:'—' }}</a>{% else %}{{ value|default_if_none:'—' }}{% endif %}</td>{% endfor %}
-      {% if can_edit or has_detail or can_cancel %}<td>{% if row.detail %}<a href="{{ row.detail }}" {% if row.product_detail %}target="_blank" rel="noopener"{% endif %}>Ayrıntılar {% if row.product_detail %}↗{% else %}→{% endif %}</a>{% endif %}{% if row.cancel_url %} <a href="{{ row.cancel_url }}">İptal et</a>{% endif %}{% if can_edit and row.editable %} <a href="{% url 'edit' slug row.pk %}">Düzenle</a>{% endif %}</td>{% endif %}
+      {% if can_edit or has_detail or can_cancel %}<td>{% if row.detail %}<a href="{{ row.detail }}" {% if row.product_detail %}target="_blank" rel="noopener"{% endif %}>Ayrıntılar {% if row.product_detail %}↗{% else %}→{% endif %}</a>{% endif %}{% if row.release_url %}<a href="{{ row.release_url }}">Serbest bırak</a>{% endif %}{% if row.cancel_url %} <a href="{{ row.cancel_url }}">İptal et</a>{% endif %}{% if can_edit and row.editable %} <a href="{% url 'edit' slug row.pk %}">Düzenle</a>{% endif %}</td>{% endif %}
     </tr>{% empty %}<tr><td colspan="12" class="empty">{% if q or category %}Filtrelerle eşleşen kayıt bulunamadı.{% else %}Henüz kayıt yok. Yetkiniz varsa “{% if slug == 'siparisler' %}Yeni Sipariş{% else %}Yeni kayıt{% endif %}” ile başlayabilirsiniz.{% endif %}</td></tr>{% endfor %}</tbody>
   </table></div>
   <div class="pagination">

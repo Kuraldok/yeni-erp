@@ -20,12 +20,14 @@ def quantity_fields(instance):
     if name == 'product':
         return [('minimum_stock', instance.minimum_stock, instance.unit)]
     if name == 'orderline':
-        return [('quantity',instance.quantity,instance.product.unit)] if instance.product_id else []
+        return [('quantity',instance.quantity,instance.unit or instance.product.unit)] if instance.product_id else []
     if name == 'stockmovement':
         return [('quantity',instance.quantity,instance.unit or instance.product.unit)] if instance.product_id else []
     if name == 'productionjob':
         return [('quantity',instance.quantity,instance.unit),('actual_quantity',instance.actual_quantity,instance.unit)]
-    if name in ('materialrequirement','consumptionrecipeline','productioninputsnapshot','productionposting'):
+    if name == 'productionposting':
+        return [('quantity',instance.quantity,instance.unit),('scrap_quantity',instance.scrap_quantity,instance.unit)]
+    if name in ('materialrequirement','consumptionrecipeline','productioninputsnapshot','stockdocumentline','stockreservation'):
         return [('quantity',instance.quantity,instance.unit)]
     return []
 

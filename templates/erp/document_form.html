@@ -1,0 +1,14 @@
+{% extends 'base.html' %}{% load static %}
+{% block content %}
+<a href="{% url 'listing' 'stok-belgeleri' %}">← Stok belgeleri</a><h1>Yeni stok belgesi</h1>
+<p class="notice">Türü ve gerekiyorsa onaylı siparişi seçip “Seçimi güncelle” düğmesine basın. Teslimat / mal kabulde sipariş kalemi; transfer / sayımda stok kartı seçin. Sayım miktarı farkı değil, depoda sayılan toplamdır. Taslağı inceleyip ayrıca işleyin.</p>
+<form method="post" data-document-editor>{% csrf_token %}
+<section class="panel">{{ form.as_p }}<button class="button secondary" name="refresh" value="1" formnovalidate>Seçimi güncelle</button></section>
+<section class="panel"><h2>Fiş kalemleri</h2>{{ lines.management_form }}{{ lines.non_form_errors }}
+<div data-document-lines>{% for line in lines %}<div class="document-line panel">{{ line.as_p }}</div>{% endfor %}</div>
+<template data-document-empty><div class="document-line panel">{{ lines.empty_form.as_p }}</div></template>
+<button type="button" class="button secondary" data-document-add>+ Kalem ekle</button></section>
+<button class="button" type="submit">Taslak oluştur</button></form>
+{{ product_units|json_script:'document-product-units' }}{{ line_units|json_script:'document-line-units' }}
+<script src="{% static 'stock-document.js' %}" defer></script>
+{% endblock %}

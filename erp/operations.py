@@ -22,6 +22,10 @@ def cancel_line(line_id, actor, reason):
         return line, False
     if order.status != 'draft':
         raise ValidationError('İptal için önce siparişi taslağa alıp kaydedin.')
+    if line.fulfilled_quantity or line.production_jobs.filter(state='running').exists():
+        raise ValidationError('Önce teslimat / mal kabul fişlerini ters çevirin ve çalışan üretimi iptal edin.')
+    for reservation in line.reservations.filter(state='active'):
+        reservation.state='released';reservation.reason=reason;reservation.save()
     line.status = 'cancelled'
     line.cancelled_by = actor
     line.cancelled_at = timezone.now()

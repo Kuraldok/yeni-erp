@@ -14,6 +14,7 @@ from .models import (
     AuditEvent, ConsumptionRecipe, ConsumptionRecipeLine, ProductionPosting, QuantityReview,
 )
 from .production import advance_job, material_plan
+from .models import StockDocument,StockDocumentLine,StockReservation
 from .registry import MODULES
 from .routing import apply_component_routes
 from .test_production import workbook as single_sheet_workbook, FULL_HEADER
@@ -160,9 +161,12 @@ class GroupFilteringTests(TestCase):
             posting = ProductionPosting.objects.create(job=job,quantity=1,unit='adet',recipe_label=str(consumption),input_warehouse=warehouse,output_warehouse=warehouse,created_by=cls.user)
             review = QuantityReview.objects.create(model_label='erp.stockmovement',object_id=str(movement.pk),field_name='quantity',quantity=Decimal('1.5'))
             audit = AuditEvent.objects.filter(model_label='erp.product',object_id=str(product.pk),action='create').first()
+            document=StockDocument.objects.create(number=f'DOC-{suffix}',kind='count',source_warehouse=warehouse,reason='Sayım',created_by=cls.user)
+            StockDocumentLine.objects.create(document=document,product=component,quantity=5,unit='adet')
+            reservation=StockReservation.objects.create(product=component,warehouse=warehouse,job=job,quantity=1,unit='adet',created_by=cls.user)
             cls.records[suffix] = {'product':product, 'component':component, 'warehouse':warehouse,
                 'movement':movement, 'partner':partner, 'order':order, 'line':line,
-                'flow':flow, 'route':route, 'step':step, 'job':job,'consumption':consumption,'consumption_line':consumption_line,'posting':posting,'review':review,'audit':audit}
+                'flow':flow, 'route':route, 'step':step, 'job':job,'consumption':consumption,'consumption_line':consumption_line,'posting':posting,'review':review,'audit':audit,'document':document,'reservation':reservation}
 
     def setUp(self):
         self.client.force_login(self.user)
@@ -174,6 +178,9 @@ class GroupFilteringTests(TestCase):
         a, b = self.records['A'], self.records['B']
         pairs = {
             'urunler':(a['product'].pk,b['product'].pk),
+            'stok-kartlari':(a['product'].pk,b['product'].pk),
+            'stok-belgeleri':(a['document'].pk,b['document'].pk),
+            'rezervasyonlar':(a['reservation'].pk,b['reservation'].pk),
             'depolar':(a['warehouse'].pk,b['warehouse'].pk),
             'stok':(a['movement'].pk,b['movement'].pk),
             'cariler':(a['partner'].pk,b['partner'].pk),
@@ -198,8 +205,11 @@ class GroupFilteringTests(TestCase):
                 response = self.client.get(reverse('listing', args=[slug]), {'category':'Banklar'})
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, 'id="category"')
-                self.assertIn(included, self.ids(response))
-                self.assertNotIn(excluded, self.ids(response))
+                ids=self.ids(response)
+                for page_number in range(2,response.context['page'].paginator.num_pages+1):
+                    ids|=self.ids(self.client.get(reverse('listing',args=[slug]),{'category':'Banklar','page':page_number}))
+                self.assertIn(included, ids)
+                self.assertNotIn(excluded, ids)
                 self.assertEqual(response.context['category'], 'Banklar')
 
     def test_mixed_order_is_not_duplicated_and_keeps_its_full_total(self):

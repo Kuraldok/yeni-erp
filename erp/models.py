@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
@@ -32,6 +32,13 @@ class Product(BusinessModel):
                 raise ValidationError({'unit':'Stok geçmişi bulunan kartın birimi değiştirilemez.'})
             if previous and previous.unit != self.unit and any(is_fractional_count(quantity,self.unit) for quantity in OrderLine.objects.filter(product=self).values_list('quantity',flat=True)):
                 raise ValidationError({'unit':'Kesirli miktarlı sipariş geçmişi bulunan kart Adet birimine çevrilemez; ayrı stok kartı açın.'})
+            if previous and previous.unit and previous.unit != self.unit and OrderLine.objects.filter(product=self).exists():
+                raise ValidationError({'unit':'Sipariş geçmişi bulunan kartın birimi değiştirilemez; ayrı stok kartı açın.'})
+    def save(self,*args,**kwargs):
+        previous=type(self).objects.filter(pk=self.pk).first() if self.pk else None
+        if previous and previous.unit and previous.unit!=self.unit and (StockMovement.objects.filter(product=self).exists() or OrderLine.objects.filter(product=self).exists()):
+            raise ValidationError({'unit':'İşlem geçmişi bulunan kartın birimi değiştirilemez.'})
+        return super().save(*args,**kwargs)
 
 class Warehouse(BusinessModel):
     name = models.CharField('Depo adı', max_length=100, unique=True)
@@ -53,6 +60,11 @@ class StockMovement(BusinessModel):
     quantity = models.DecimalField('Miktar', max_digits=24, decimal_places=12, validators=[MinValueValidator(Decimal('0.000000000001'))])
     unit = models.CharField('İşlem birimi', max_length=12, blank=True, editable=False)
     posting = models.ForeignKey('ProductionPosting', on_delete=models.PROTECT, null=True, blank=True, editable=False, related_name='movements')
+    document_line = models.ForeignKey('StockDocumentLine', on_delete=models.PROTECT, null=True, blank=True, editable=False, related_name='movements')
+    reverses = models.OneToOneField('self',on_delete=models.PROTECT,null=True,blank=True,editable=False,related_name='reversal_movement')
+    unit_cost = models.DecimalField('Birim maliyet (TL)',max_digits=32,decimal_places=8,null=True,blank=True,validators=[MinValueValidator(0)])
+    total_cost = models.DecimalField('Hareket değeri (TL)',max_digits=40,decimal_places=8,null=True,blank=True,editable=False,validators=[MinValueValidator(0)])
+    value_adjustment = models.DecimalField('Ters fiş değer farkı (TL)',max_digits=40,decimal_places=8,null=True,blank=True,default=0,editable=False)
     note = models.CharField('Açıklama / belge no', max_length=240)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, verbose_name='Kaydeden', editable=False)
     created_at = models.DateTimeField('Tarih', auto_now_add=True)
@@ -67,6 +79,8 @@ class StockMovement(BusinessModel):
             raise ValidationError({'product':'Ürün kartında ölçü birimi boş. Stok hareketinden önce birimi açıkça tanımlayın.'})
         if self.product_id:
             validate_count(self.quantity, self.product.unit)
+            if not self.product.active and not self.reverses_id:
+                raise ValidationError({'product':'Pasif kartla yeni stok işlemi yapılamaz.'})
     def save(self, *args, **kwargs):
         if not self._state.adding:
             raise ValidationError('Stok hareketi değiştirilemez. Düzeltme için ters hareket girin.')
@@ -76,8 +90,28 @@ class StockMovement(BusinessModel):
             self.product = Product.objects.select_for_update().get(pk=self.product_id)
             self.unit = self.product.unit
             self.full_clean()
-            if self.kind == 'out' and stock_balance(self.product, self.warehouse) < self.quantity:
-                raise ValidationError('Yetersiz stok. Çıkış miktarı mevcut stoktan büyük olamaz.')
+            from .stock import available_stock, money, movement_cost
+            if self.kind == 'out':
+                owner_job = self.posting.job_id if self.posting_id else None
+                owner_line = self.document_line.order_line_id if self.document_line_id and self.document_line.document.kind == 'delivery' else None
+                if available_stock(self.product,self.warehouse,job_id=owner_job,order_line_id=owner_line) < self.quantity:
+                    raise ValidationError('Yetersiz stok: serbest miktar çıkış için yeterli değil. Diğer sipariş ve üretim rezervasyonları kullanılamaz.')
+                if not self.reverses_id:
+                    self.total_cost=movement_cost(self.product,self.warehouse,self.quantity)
+                    with localcontext() as context:
+                        context.prec=60
+                        self.unit_cost=money(self.total_cost/self.quantity) if self.total_cost is not None else None
+                else:
+                    current_value=movement_cost(self.product,self.warehouse,self.quantity)
+                    with localcontext() as context:
+                        context.prec=60
+                        self.value_adjustment=money(current_value-self.total_cost) if current_value is not None and self.total_cost is not None else None
+            elif self.total_cost is None and self.unit_cost is not None:
+                with localcontext() as context:
+                    context.prec=60
+                    self.total_cost=money(self.quantity*self.unit_cost)
+            for name in ('unit_cost','total_cost','value_adjustment'):
+                self._meta.get_field(name).clean(getattr(self,name),self)
             return super().save(*args, **kwargs)
     def delete(self, *args, **kwargs):
         raise ValidationError('Stok hareketi silinemez. Düzeltme için ters hareket girin.')
@@ -120,17 +154,40 @@ class Order(BusinessModel):
             previous_kind = type(self).objects.filter(pk=self.pk).values_list('kind',flat=True).first()
             if previous_kind != self.kind or self.status in ('approved','completed'):
                 from .orders import order_products
-                if self.lines.filter(status='active').exclude(product__in=order_products(self.kind)).exists():
+                if self.lines.filter(status='active').exclude(product__in=order_products(self.kind,include_inactive=True)).exists():
                     field = 'kind' if previous_kind != self.kind else 'status'
                     raise ValidationError({field:'Sipariş kalemleri bu türe uygun değil. Satışta yalnızca ana ürün, satın almada yalnızca hammadde kullanılabilir.'})
+            previous = type(self).objects.get(pk=self.pk)
+            if (previous.kind,previous.partner_id,previous.currency)!=(self.kind,self.partner_id,self.currency):
+                if self.documents.filter(status='posted').exists() or self.lines.filter(production_jobs__state__in=['running','completed']).exists():
+                    raise ValidationError('İşlenmiş fiş veya başlatılmış üretim bulunan siparişin türü, carisi ve para birimi değiştirilemez.')
+            if self.status == 'completed' and previous.status != 'completed':
+                if any(line.fulfilled_quantity < line.quantity for line in self.lines.filter(status='active')):
+                    raise ValidationError({'status':'Teslimat / mal kabul miktarları tamamlanmadan sipariş tamamlanamaz.'})
+            if self.status == 'cancelled' and previous.status != 'cancelled':
+                if self.lines.filter(production_jobs__state='running').exists() or any(line.fulfilled_quantity for line in self.lines.all()):
+                    raise ValidationError({'status':'Önce bağlı üretimleri durdurun ve teslimat / mal kabul fişlerini ters fişle düzeltin.'})
     @property
     def total(self): return sum((line.total for line in self.lines.all() if line.status == 'active'), Decimal(0))
+    def save(self,*args,**kwargs):
+        with transaction.atomic():
+            previous=type(self).objects.filter(pk=self.pk).first() if self.pk else None
+            if previous and previous.status!=self.status and self.status in ('completed','cancelled'):
+                self.clean()
+            result=super().save(*args,**kwargs)
+            if previous and previous.status!=self.status and self.status=='cancelled':
+                for reservation in StockReservation.objects.filter(order_line__order=self,state='active'):
+                    reservation.state='released';reservation.reason='Sipariş iptal edildi.';reservation.save()
+            return result
 
 class OrderLine(BusinessModel):
     order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name='lines', verbose_name='Sipariş')
     product = models.ForeignKey(Product, on_delete=models.PROTECT, verbose_name='Ürün')
     quantity = models.DecimalField('Miktar', max_digits=14, decimal_places=3, validators=[POSITIVE])
     unit_price = models.DecimalField('Birim fiyat (KDV hariç)', max_digits=14, decimal_places=2, validators=[MinValueValidator(0)])
+    unit = models.CharField('İşlem birimi',max_length=12,blank=True,editable=False)
+    product_code = models.CharField('Ürün kodu kopyası',max_length=100,blank=True,editable=False)
+    product_name = models.CharField('Ürün adı kopyası',max_length=200,blank=True,editable=False)
     status = models.CharField('Kalem durumu', max_length=12, choices=[('active','Etkin'),('cancelled','İptal')], default='active', editable=False)
     cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, editable=False, related_name='+', verbose_name='İptal eden')
     cancelled_at = models.DateTimeField('İptal tarihi', null=True, editable=False)
@@ -154,10 +211,32 @@ class OrderLine(BusinessModel):
             order = None
         if order is not None and order.kind in ('sale','purchase') and self.product_id:
             from .orders import order_products
-            if not order_products(order.kind).filter(pk=self.product_id).exists():
+            if not order_products(order.kind,include_inactive=bool(previous and previous.product_id==self.product_id)).filter(pk=self.product_id).exists():
                 raise ValidationError({'product':'Satış siparişinde yalnızca ana ürün, satın alma siparişinde yalnızca hammadde seçilebilir.'})
         if self.product_id:
-            validate_count(self.quantity, self.product.unit)
+            if not self.product.active and (not previous or previous.product_id != self.product_id or self.quantity != previous.quantity):
+                raise ValidationError({'product':'Pasif ürün yeni siparişe veya miktar değişikliğine konu olamaz.'})
+            validate_count(self.quantity,self.unit if previous and previous.product_id==self.product_id else self.product.unit)
+        if previous and (previous.product_id != self.product_id or previous.quantity != self.quantity):
+            if self.production_jobs.exclude(state='cancelled').exists() or self.document_lines.filter(document__status='posted').exists() or self.reservations.filter(state='active').exists():
+                raise ValidationError('Bağlı üretim, fiş veya rezervasyon varken ürün ve miktar değiştirilemez.')
+    def save(self,*args,**kwargs):
+        previous = type(self).objects.filter(pk=self.pk).first() if self.pk else None
+        if not self.product.active and (not previous or previous.product_id!=self.product_id or previous.quantity!=self.quantity):
+            raise ValidationError({'product':'Pasif ürün yeni siparişe veya miktar değişikliğine konu olamaz.'})
+        if not previous or previous.product_id != self.product_id:
+            self.unit,self.product_code,self.product_name=self.product.unit,self.product.code,self.product.name
+        return super().save(*args,**kwargs)
+    @property
+    def fulfilled_quantity(self):
+        from .stock import fulfilled_quantity
+        return fulfilled_quantity(self)
+    @property
+    def remaining_quantity(self):
+        if self.status=='cancelled' or self.order.status in ('cancelled','completed'):return Decimal(0)
+        return max(Decimal(0),self.quantity-self.fulfilled_quantity)
+    def get_unit_display(self):
+        return dict(Product._meta.get_field('unit').choices).get(self.unit,self.unit or 'Birim belirtilmedi')
     @property
     def total(self): return (self.quantity * self.unit_price).quantize(Decimal('0.01'))
     def __str__(self): return f'{self.order.number} · {self.product.code}'
@@ -277,7 +356,12 @@ class ProductionJob(BusinessModel):
     casting_material = models.CharField('Döküm hammaddesi', max_length=10, blank=True, choices=[('aluminium','Alüminyum Külçe'),('pig','Pik')])
     assembly_required = models.BooleanField('Montaj gerekiyor mu?', null=True, blank=True)
     preceding_jobs = models.ManyToManyField('self', symmetrical=False, blank=True, related_name='following_jobs', verbose_name='Önce tamamlanacak işler')
-    state = models.CharField('Durum', max_length=12, default='draft', choices=[('draft','Taslak'),('running','Üretimde'),('completed','Tamamlandı')], editable=False)
+    state = models.CharField('Durum', max_length=12, default='draft', choices=[('draft','Taslak'),('running','Üretimde'),('completed','Tamamlandı'),('cancelled','İptal edildi')], editable=False)
+    order_line = models.ForeignKey(OrderLine,on_delete=models.PROTECT,null=True,blank=True,related_name='production_jobs',verbose_name='Satış siparişi kalemi')
+    posting_version = models.PositiveIntegerField(default=0,editable=False)
+    cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,editable=False,related_name='+')
+    cancelled_at = models.DateTimeField(null=True,editable=False)
+    cancellation_reason = models.TextField(blank=True,editable=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, editable=False)
     created_at = models.DateTimeField('Oluşturma tarihi', auto_now_add=True)
     note = models.TextField('Not', blank=True)
@@ -290,12 +374,27 @@ class ProductionJob(BusinessModel):
         ordering = ['-pk']
         verbose_name = 'Üretim iş emri'
         verbose_name_plural = 'Üretim iş emirleri'
-        permissions = [('advance_productionjob','Üretim aşamasını ilerletebilir'),('post_production_stock','Üretim stok işlemi yapabilir'),('track_production_without_stock','Stoksuz aşama takibi açabilir')]
+        permissions = [('advance_productionjob','Üretim aşamasını ilerletebilir'),('post_production_stock','Üretim stok işlemi yapabilir'),('track_production_without_stock','Stoksuz aşama takibi açabilir'),('cancel_productionjob','Üretim işini gerekçeyle iptal edebilir'),('link_production_orders','Üretim için açık satış kalemlerini seçebilir')]
         constraints = [models.CheckConstraint(condition=Q(quantity__gt=0), name='positive_job_quantity')]
     def __str__(self): return self.number
+    @property
+    def stock_posting(self):
+        return self.stock_postings.order_by('pk').last()
+    @property
+    def remaining_quantity(self):
+        return max(Decimal(0),self.quantity-(self.actual_quantity or Decimal(0)))
+    @property
+    def open_quantity(self):
+        return self.remaining_quantity if self.state in ('draft','running') else Decimal(0)
     def clean(self):
         validate_count(self.quantity, self.unit)
         validate_count(self.actual_quantity, self.unit, 'actual_quantity')
+        if self.product_id and not self.product.active:
+            raise ValidationError({'product':'Pasif ürünle yeni üretim yapılamaz.'})
+        if self.order_line_id:
+            line=self.order_line
+            if line.status!='active' or line.order.kind!='sale' or line.order.status not in ('draft','approved') or line.product_id!=self.product_id:
+                raise ValidationError({'order_line':'Etkin ve ürünü aynı olan açık satış kalemi seçin.'})
         if self.consumption_recipe_id and self.product_id and self.consumption_recipe.product_id != self.product_id:
             raise ValidationError({'consumption_recipe':'Tüketim reçetesi seçilen ürüne ait olmalıdır.'})
         if self.route_id:
@@ -514,8 +613,16 @@ class ProductionInputSnapshot(BusinessModel):
 
 
 class ProductionPosting(BusinessModel):
-    job = models.OneToOneField(ProductionJob, on_delete=models.PROTECT, related_name='stock_posting', verbose_name='İş emri')
+    job = models.ForeignKey(ProductionJob, on_delete=models.PROTECT, related_name='stock_postings', verbose_name='İş emri')
+    sequence = models.PositiveIntegerField(default=1)
     quantity = models.DecimalField('Üretilen miktar', max_digits=14, decimal_places=3)
+    scrap_quantity = models.DecimalField('Fire / hurda miktarı',max_digits=14,decimal_places=3,default=0,validators=[MinValueValidator(0)])
+    scrap_reason = models.TextField('Fire / hurda nedeni',blank=True)
+    close_reason = models.TextField('Eksik miktarla kapatma nedeni',blank=True)
+    labor_cost = models.DecimalField('İşçilik (TL)',max_digits=18,decimal_places=2,default=0,validators=[MinValueValidator(0)])
+    overhead_cost = models.DecimalField('Diğer üretim gideri (TL)',max_digits=18,decimal_places=2,default=0,validators=[MinValueValidator(0)])
+    material_cost = models.DecimalField('Malzeme maliyeti (TL)',max_digits=40,decimal_places=8,null=True,editable=False)
+    total_cost = models.DecimalField('Toplam maliyet (TL)',max_digits=40,decimal_places=8,null=True,editable=False)
     unit = models.CharField('Birim', max_length=12)
     recipe_label = models.CharField('Tüketim reçetesi', max_length=240)
     input_warehouse = models.ForeignKey(Warehouse, on_delete=models.PROTECT, related_name='+', verbose_name='Girdi deposu')
@@ -528,6 +635,7 @@ class ProductionPosting(BusinessModel):
         default_permissions = ('view',)
         verbose_name = 'Üretim stok fişi'
         verbose_name_plural = 'Üretim stok fişleri'
+        constraints = [models.UniqueConstraint(fields=['job','sequence'],name='unique_production_batch')]
     def __str__(self): return f'{self.job.number} · {self.quantity} {self.unit}'
     def save(self, *args, **kwargs):
         if not self._state.adding:
@@ -535,3 +643,6 @@ class ProductionPosting(BusinessModel):
         return super().save(*args, **kwargs)
     def delete(self, *args, **kwargs):
         raise ValidationError('Üretim stok fişi silinemez.')
+
+
+from .stock_models import StockDocument, StockDocumentLine, StockReservation

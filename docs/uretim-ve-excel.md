@@ -46,7 +46,7 @@ Yönetici veya ERP yöneticisi hesabıyla **Excel aktarımları → Excel aktar*
 
 Başlatılan işin ürün/miktar/akış tanımı ekran üzerinden değiştirilemez. Sonraki akış değişiklikleri önceden başlatılan işin aşamalarını değiştirmez. Gözlemci aşama ilerletemez; üretim sorumlusu ve ERP yöneticisi ilerletebilir.
 
-Yeni **Üretim ve stok** işleri, son aşamada doğrulanmış doğrudan tüketim reçetesiyle stok düşer ve ürün girişi oluşturur. Eski **Yalnız aşama takibi** işleri stok değiştirmez. Stok rezervasyonu, otomatik sevkiyat ve muhasebe henüz yoktur. Açılış stoğunu ve üretim dışı gerçek hareketleri ayrıca kaydedin. Birimi boş ürünle stok hareketi kaydetmek engellenir; birimi kartta yetkili kişi açıkça tanımlamalıdır. Paketleme/teslimata hazır aşamasının tamamlanması fiziksel teslimat yapıldığı anlamına gelmez.
+Yeni **Üretim ve stok** işleri, son aşamada doğrulanmış doğrudan tüketim reçetesiyle stok düşer ve ürün girişi oluşturur. Eski **Yalnız aşama takibi** işleri stok değiştirmez. Stok rezervasyonu iş başlangıcında yapılır; fiziksel sevkiyat kendiliğinden gerçekleşmez ve muhasebe henüz yoktur. Açılış stoğunu ve üretim dışı gerçek hareketleri ayrıca kaydedin. Birimi boş ürünle stok hareketi kaydetmek engellenir; birimi kartta yetkili kişi açıkça tanımlamalıdır. Paketleme/teslimata hazır aşamasının tamamlanması fiziksel teslimat yapıldığı anlamına gelmez.
 
 ## Terminalden kurulum ve kontrol
 
@@ -151,16 +151,16 @@ Excel aktarım raporunun satır, sayfa ve güncel inceleme sayıları seçilen g
 
 ## Üretim ve stok bağlantısı
 
-1. **Ürün kartlarında** çıktı ve girdilerin birimlerini açıkça tanımlayın. Adet miktarları tam sayı olmalıdır. **Stok hareketleri** ekranında açılış stoğunu doğru depoya girin.
+1. **Stok kartlarında** çıktı ve girdilerin birimlerini açıkça tanımlayın. Adet miktarları tam sayı olmalıdır. **Stok hareketleri** ekranında açılış stoğunu doğru depoya girin.
 2. **Stok tüketim reçeteleri → Yeni kayıt** yoluyla bir yarı mamul veya mamul için reçete oluşturun. Alternatif olarak kaynak **Ürün reçeteleri → Ayrıntılar → Stok tüketim kopyası oluştur** düğmesini kullanın. Kaynak Excel satırları ve kodları korunur.
 3. **Girdi ekle** veya **Eşleştir / düzenle** ile bir çıktı için doğrudan tüketilecek stok kartlarını, miktar ve birimi tanımlayın. Izgara'nın kodsuz hammaddesini mevcut hammadde kartına burada bağlayın. Üst ürünün düz Excel tablosunda yer alsa bile bu üretimde doğrudan tüketilmeyen satırın **Bu üretimde tüketilir** seçimini kaldırın. Üst ürüne verilen hammaddenin yarı mamullere dağılımı bilinmiyorsa tahmin etmeyin; her yarı mamulün gerçek tüketimini ayrıca tanımlayın.
 4. Reçete başlığını düzenleyip **Girdiler bu ürünün doğrudan tüketimidir** seçimini işaretleyerek doğrulayın. Eksik kart, miktar veya uyuşmayan birim varsa doğrulama reddedilir. Girdi değişince yeniden doğrulama gerekir. Kullanılmış sürümü değiştirmek yerine yeni sürüm açın.
 5. **Üretim iş emrinde** **Üretim ve stok**, tüketim reçetesi, **Girdi çıkış deposu** ve **Ürün giriş deposu** seçin. İş başlatıldığında tüketim kopyası işe sabitlenir. Dökümde Pik/Alüminyum seçimi, rota ve önceki iş kontrolleri devam eder.
-6. Son aşamada **Gerçekleşen üretim miktarı** girin. Fiili miktar planlanandan farklı olabilir; Adet için kesir girilemez. Girdi çıkışları ve ürün girişi tek işlemde kaydedilir. **Üretim stok fişleri** ekranında kullanıcı, zaman, depolar ve tüm hareketler görünür. Aynı işi yeniden tamamlamak ikinci stok işlemi oluşturmaz.
+6. Son aşamada **Gerçekleşen üretim miktarı** girin. Fiili miktar planlanandan farklı olabilir; Adet için kesir girilemez. Girdi çıkışları ve ürün girişi tek işlemde kaydedilir. **Üretim stok fişleri** ekranında kullanıcı, zaman, depolar ve tüm hareketler görünür. Aynı parti formunu tekrar göndermek ikinci stok işlemi oluşturmaz. Kalan miktar için yeni parti kaydedilir.
 
 Örnek: bir yarı mamul için 5 kg hammadde gerekiyorsa 3 adet yarı mamul üretiminde 15 kg hammadde çıkar, 3 adet yarı mamul girer. Bir mamul 2 adet bu yarı mamulü ve 0,5 kg boyayı kullanıyorsa 1 mamul üretiminde 2 adet yarı mamul ve 0,5 kg boya çıkar, 1 adet mamul girer. Yarı mamulün hammaddesi mamul üretiminde tekrar tüketilmez. Bunu sağlamak için mamul tüketim reçetesine yalnız doğrudan girdilerini koyun.
 
-Yetersiz stok, eksik eşleştirme veya birim değişiminde son aşama açık kalır; hiçbir kısmi hareket kaydedilmez. Açılış stoğunu veya gerçek eksiği tamamlayıp aynı aşamayı yeniden deneyin. Tüketim yanlış tanımlanmışsa başlamış işin kopyası değiştirilmez; doğru yeni sürümle yeni iş açın. Tamamlanmış stok fişi düzenlenmez/silinmez; düzeltme gerektiğinde yetkili kişi açıklamalı ters stok hareketi girer.
+Yetersiz stok, eksik eşleştirme veya birim değişiminde son aşama açık kalır; hiçbir kısmi hareket kaydedilmez. Açılış stoğunu veya gerçek eksiği tamamlayıp aynı aşamayı yeniden deneyin. Tüketim yanlış tanımlanmışsa başlamış işin kopyası değiştirilmez; doğru yeni sürümle yeni iş açın. Tamamlanmış stok fişi düzenlenmez/silinmez; düzeltme gerektiğinde yetkili kişi fişin bağlantısından gerekçeli ters fiş oluşturur.
 
 Önceki işlerin modları ve tamamlanma bilgileri korunur; geriye dönük stok düşülmez. Yeni yalnız paketleme/aşama takibi için **Yalnız aşama takibi** seçimi özel yetki gerektirir. Üretim sorumlusu stok fişi oluşturabilir, elle stok ekleme/çıkarma yetkisini ayrıca almalıdır.
 
@@ -169,3 +169,22 @@ Yetersiz stok, eksik eşleştirme veya birim değişiminde son aşama açık kal
 Adet miktarları sipariş, asgari stok, üretim, stok hareketi ve yeni tüketim reçetesinde tam sayıdır. Diğer ölçü birimleri ve fiyatlar kesirli kalır. Excel'de veya geçmiş kayıtlarda kesirli Adet bulunursa özgün miktar silinmez ve yuvarlanmaz; **Miktar incelemeleri** ekranında izlenir. Kaynak veriyi düzeltmek için yeni Excel sürümü aktarın. Kaynağın ayrı tüketim kopyasında gerçek tam sayı tüketimini yetkili kişi tanımlayıp doğrular.
 
 **İşlem geçmişi**, ERP iş kayıtlarının yeni ekleme, düzenleme, silme ve iptal olaylarında kullanıcı/zaman ve eski/yeni değerleri tutar. Geçmiş kayıtlar için bilinmeyen kullanıcı ve eski işlem tarihi üretilmez. İzinli ERP yöneticisi ayrıntıları okuyabilir. Kullanıcı belirtilmeyen komutlar **Sistem / komut** olarak görünür. Sipariş kalemini iptal ederken taslak siparişte **İptal et** bağlantısını kullanın ve gerekçe girin; kalem siparişte geçmiş olarak kalır, toplama katılmaz.
+
+
+## Kısmi üretim, fire ve siparişe teslimat
+
+Örneğin 10 adet mamul planında ilk gün 3 sağlam ve 1 fire girilirse mamul stoğuna 3 adet girer. Reçetenin girdileri 4 adet işlenen miktar üzerinden tüketilir; başka gerçek tüketim varsa girdi alanlarına yazılır. Sağlam üretim 3, fire 1, kalan üretim 7 olarak izlenir. Kalan malzemeler yeniden ayrılır; fire nedeniyle ek malzeme gerekiyorsa işte eksik görünür. Son aşama açık kalır; sonraki gün yeni parti kaydedilir. İş planı tamamlanınca kapanır. Talep azaldıysa **Plan eksik kalsa da bu partiyle işi kapat** seçimi ve gerekçe kullanılabilir. Kalan iş tamamen bırakılacaksa **Kalan üretimi iptal et** seçilir.
+
+Dökümde Pik seçilmiş bir işin tüketim reçetesinde etkin Alüminyum varsa başlatma reddedilir; tersi de geçerlidir. Kartın etkinliği ve birimi başlangıçta ve her partide denetlenir. İşe kopyalanmış reçete değiştirilmez.
+
+Satış siparişini açıp **Üretim, teslimat ve kalan miktar takibi** bağlantısını kullanın. Kalemden aynı mamul için iş emri açın. Üretilen mamul kalan satış ihtiyacı kadar ayrılır. **Stok belgeleri** ekranında onaylı sipariş ve kalem seçerek teslimat fişi hazırlayın; doğru çıkış deposunu seçip taslağı işleyin. Kısmi teslimat açık miktarı azaltır. Tüm kalemler tamamlanmadan sipariş elle kapatılamaz. Mal kabul aynı akışı satın alma ve giriş deposuyla uygular.
+
+## Üretim düzeltmesi ve maliyet
+
+İşlenmiş üretim partisinin ayrıntısında **Ters üretim fişi oluştur** seçeneği vardır. Gerekçe zorunludur. Sağlam ürün çıkışı ve o partinin gerçek girdilerinin iadesi aynı işlemde olur. Başka siparişe ayrılmış veya depoda bulunmayan ürün çıkarılamaz; önce gerekli teslimatı ters fişle düzeltin ve rezervasyonu bırakın. Özgün parti geçmişte korunur. İş tamamlanmışsa son aşama yeniden açılır; iptal edilmiş işin durumu değiştirilmez. Tekrar ters çevirme ikinci hareket üretmez.
+
+Üretim maliyetinin hesaplanması için hammadde giriş fiyatları bilinmelidir. Kaynak Excel'de olmayan fiyat tahmin edilmez. İşçilik ve diğer üretim giderleri parti bazında TL girilir. Fire dahil gerçek malzeme tüketimi maliyete girer; sağlam ürün varsa toplam maliyet sağlam miktara dağıtılır. Hiç sağlam ürün yoksa kayıp maliyeti parti raporunda kalır, mamul girişi yapılmaz. Geri kazanılmış hurda için otomatik stok kartı veya değer üretilmez.
+
+**Üretim ve maliyet raporu** ürün grubu ve tarih aralığıyla parti sonuçlarını, fireyi, reçete/gerçek tüketim farkını ve TL maliyeti gösterir. Ters çevrilmiş partiler net toplama katılmaz. Rapor CSV olarak indirilebilir. **Stok kartları** ayrıntısında depoların miktarı, rezervasyonu, serbest stoğu ve bilinen değeri izlenir.
+
+Bir teslimatın iadesinden veya farklı maliyetli partilerin bir araya gelmesinden sonra üretim ters çevrilirse, özgün maliyet ile güncel stok değerinin farkı **Ters fiş değer farkı** olarak kaydedilir. Fark fiş hareketlerinde ve maliyet raporunda ayrıca görünür.

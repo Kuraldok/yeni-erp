@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block content %}<h1>Stok, üretim ve sipariş raporları</h1>
+<section class="panel"><form method="get">{{ form.as_p }}{% include 'erp/group_filter_control.html' %}<p><button class="button">Raporla</button></p></form><a href="?{{ export_query }}">CSV indir</a></section>
+<p class="notice">Maliyetler TL cinsindedir. Maliyeti bilinmeyen hareketler sıfır kabul edilmez; ilgili değer “Bilinmiyor” görünür. Üretimde plan ve kalan miktar tüm işe, sağlam/fire ve maliyet seçilen döneme aittir. Geçmiş tarihli stok raporunda güncel rezervasyon ve serbest miktar gösterilmez.</p>
+<section class="panel"><div class="table-wrap"><table><thead><tr>{% for header in headers %}<th>{{ header }}</th>{% endfor %}</tr></thead><tbody>{% for row in rows %}<tr>{% for value in row %}<td class="wrap">{{ value|default_if_none:'Bilinmiyor' }}</td>{% endfor %}</tr>{% empty %}<tr><td>Bu seçimde kayıt yok.</td></tr>{% endfor %}</tbody></table></div></section>{% endblock %}

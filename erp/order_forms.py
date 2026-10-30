@@ -41,6 +41,8 @@ class OrderLineForm(forms.ModelForm):
         if 'order' in self.fields:
             self.fields['order'].queryset = Order.objects.filter(status='draft') if user.has_perm('erp.view_order') else Order.objects.none()
         products = order_products(order_kind) if user.has_perm('erp.view_product') else order_products('')
+        if self.instance.pk and user.has_perm('erp.view_product'):
+            products=order_products(order_kind,include_inactive=True).filter(Q(active=True)|Q(pk=self.instance.product_id))
         if product_group:
             grouped = grouped_records(products.model) if product_group == '__none__' else grouped_records(products.model, product_group)
             condition = ~Q(pk__in=grouped.values('pk')) if product_group == '__none__' else Q(pk__in=grouped.values('pk'))

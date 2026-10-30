@@ -20,6 +20,11 @@ class Command(BaseCommand):
         roles['Üretim sorumlusu'] += ['view_'+m for m in inventory_read]+[
             'add_consumptionrecipe','change_consumptionrecipe','add_consumptionrecipeline','change_consumptionrecipeline',
             'view_warehouse','view_stockmovement','post_production_stock']
+        operational_read=['view_stockdocument','view_stockdocumentline','view_stockreservation']
+        roles['Gözlemci']+=operational_read
+        roles['Depo sorumlusu']+=operational_read+['add_stockdocument','post_stockdocument','view_order','view_orderline']
+        roles['Sipariş sorumlusu']+=operational_read+['view_productionjob','view_warehouse','view_stockmovement','add_stockreservation','release_stockreservation']
+        roles['Üretim sorumlusu']+=operational_read+['cancel_productionjob','link_production_orders']
         for name, codes in roles.items():
             group, _ = Group.objects.get_or_create(name=name)
             permissions = Permission.objects.filter(content_type__app_label='erp').exclude(codename__startswith='delete_')
