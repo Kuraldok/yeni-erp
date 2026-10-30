@@ -26,7 +26,7 @@ Yönetici veya ERP yöneticisi hesabıyla **Excel aktarımları → Excel aktar*
 - Sayfa adı ve gerçek Excel satırı saklanır. Özgün hücre değerleri (boşlar dahil) ve kaynak formüller ayrıca korunur.
 - Formüller çalıştırılmaz. Excel'in kaydettiği hesaplanmış sonuç okunur; sonuç yoksa alan boş kalır ve rapora eklenir.
 - Aynı dosya içeriği tekrar aktarılırsa yeni kart veya reçete satırı oluşturulmaz. Dosyanın adını değiştirmek bu kuralı değiştirmez.
-- Aynı kodun farklı ad, tür veya birimle kullanılması sessizce birleştirilmez. Çelişki raporlanır; ilgili kart eşleştirilmez. Aynı adlı fakat farklı kodlu hammaddeler de otomatik birleştirilmez.
+- Aynı kodun farklı ad, tür veya birimle kullanılması sessizce birleştirilmez. Çelişki raporlanır; ilgili kart eşleştirilmez. Aşağıdaki yeni kategori kurallarında **Mamul / Yarı Mamul** etiketleri eşdeğerdir; bu sınırlı istisnada kaynak etiketleri korunarak aynı kart eşleştirilebilir. Aynı adlı fakat farklı kodlu hammaddeler de otomatik birleştirilmez.
 - Mevcut kartların ad/birim/diğer verileri aktarım sırasında değiştirilmez. Yeni dosya eski kartla çelişirse raporlanır. Gerekirse yetkili kullanıcı kartı ayrıca inceler.
 - Kaynak reçete ve aktarım satırları ekran üzerinden değiştirilemez veya silinemez. Düzeltmeyi Excel'de yapıp yeni dosyayı aktarın. Farklı içerikli dosya yeni aktarım sürümü oluşturur; önceki sürüm korunur. İş emrinde doğru kaynak sürümünü seçin.
 
@@ -105,3 +105,31 @@ Yeni Excel aktarımında bu kurallara uyan yarı mamullerin rotaları da oluştu
 ```
 
 Komut mevcut rotaları/adımları, elle girilmiş süreleri veya çelişen mevcut üretim/temin tanımlarını ezmez; çelişkileri raporlar. Kartın farklı kategorilerde çelişkili rotalara bağlanması durumunda seçim yapmaz. Önceden elle oluşturulmuş rotalar korunur; gerektiğinde yeni sürüm oluşturulur. `scripts/setup.sh` bu adımı da içerir. Süreler ve hammadde miktarları bu kurallarla doldurulmaz.
+
+## Diğer kategorilerin üretim rotaları
+
+30 Ekim 2026'da belirtilen kurallar, önceki çeşme ve bank kuralları korunarak eklendi:
+
+| Kategori | Reçete bileşeni | Üretim rotası |
+| --- | --- | --- |
+| Şömineler | Tüm yarı mamuller | Döküm |
+| Izgara | Tüm yarı mamuller | Döküm |
+| Posta kutusu | Tüm yarı mamuller | Döküm |
+| Soba | Tüm yarı mamuller | Döküm |
+| Sandalye | Tüm yarı mamuller | Döküm |
+| Kapak | Tüm yarı mamuller | Döküm |
+| Bariyer | Tüm yarı mamuller | Döküm |
+| Ferforje korkuluk | Tüm yarı mamuller | Döküm |
+| Masa, Masa ayakları, Masa ve masa ayakları | Tüm yarı mamuller | Döküm |
+| Mangal | Ahşap saplı kulp, Tel ızgara sapı | Ahşap |
+| Mangal | Diğer adı belli yarı mamuller | Döküm |
+| Döküm saksı | Tüm yarı mamuller | Döküm |
+| Ahşap saksı | Tüm yarı mamuller | Ahşap |
+
+Bu tablodaki kategorilerde **Mamul** etiketli reçete bileşenleri de **Yarı mamuller** bölümünde gösterilir ve aynı kurallarla rota alır. Kaynak tür etiketi, özgün hücreler ve mevcut kart türü değiştirilmez. Aynı bileşen kodu bir satırda Mamul, diğerinde Yarı Mamul olarak verilmişse ad ve birim uyumlu olduğunda aynı karta bağlanır. Ad, birim veya hammadde/parça türü uyuşmazlıkları bu istisnaya girmez. Çeşme ve bankların önceki Mamul yorumlaması değişmez.
+
+Kategori eşleştirmesi Excel sayfa adına göre yapılır; tanımlı tekil/çoğul adlar, büyük/küçük harf ve fazla boşluk farklılıkları desteklenir. Örneğin Izgara/Izgaralar, Soba/Sobalar, Masa/Masalar, Döküm saksı/Döküm saksılar aynı kurala bağlanır. Mangalın ahşap istisnaları bileşen adının tamamına göre belirlenir; **Tel ızgara**, **Tel ızgara sapı** ile aynı bileşen sayılmaz. Adı boş Mangal bileşeninde üretim alanı tahmin edilmez; komut raporunda incelemeye bırakılır.
+
+Üst ürünün kendisine, hammaddelere, parçalara veya bu kuralların dışındaki kategorilere yeni rota atanmaz. Aynı kod hem üst ürün hem kendi bileşeni olarak verilmişse kendine bağlı rota oluşturulmaz. Kart başka bir üründe bileşen olarak kullanılıyorsa o gerçek bileşen ilişkisi değerlendirilebilir. Bir kart için ahşap ve döküm gibi çelişkili kurallar çıkarsa mevcut atama korunur; yeni seçim yapılmaz ve `setup_component_routes` çıktısındaki `skipped` listesinde açıklanır.
+
+Yeni Excel aktarımlarında kurallar otomatik uygulanır. Önceden aktarılmış ve kart bağlantısı bulunan satırlar için aynı `setup_component_routes` komutunu kullanın. Aynı dosyayı yeniden yüklemek aktarımı tekrarlamaz. Önceden çelişki nedeniyle kart bağlantısı boş bırakılmış kaynak satırları bu komutla yeniden yazılmaz; bu kayıtlar ayrıca incelenmelidir. Mevcut rotalar, adımlar, süreler ve başlatılmış iş emirleri korunur; bilinmeyen süre veya malzeme miktarı eklenmez.

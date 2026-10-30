@@ -117,11 +117,12 @@ def product_detail(request, pk):
         if selected_recipe and tab == 'components':
             from decimal import Decimal
             from .production import material_plan
+            from .routing import is_semifinished_component
             rows, _ = material_plan(selected_recipe, Decimal('1'))
             sections = [
-                {'title': 'Yarı mamuller', 'rows': [r for r in rows if r['line'].component_kind == 'Yarı Mamul']},
+                {'title': 'Yarı mamuller', 'rows': [r for r in rows if is_semifinished_component(r['line'].component_kind, r['line'].sheet)]},
                 {'title': 'Hammaddeler', 'rows': [r for r in rows if r['line'].component_kind == 'Hammadde']},
-                {'title': 'Diğer bileşenler', 'rows': [r for r in rows if r['line'].component_kind not in ('Yarı Mamul', 'Hammadde')]},
+                {'title': 'Diğer bileşenler', 'rows': [r for r in rows if r['line'].component_kind != 'Hammadde' and not is_semifinished_component(r['line'].component_kind, r['line'].sheet)]},
             ]
     return render(request, 'erp/product.html', {
         'product': product, 'tab': tab, 'can_view_components': can_view_components,

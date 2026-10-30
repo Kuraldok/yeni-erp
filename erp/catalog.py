@@ -12,6 +12,7 @@ from openpyxl import load_workbook
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from .models import Product, CatalogImport, MaterialRecipe, MaterialRequirement
+from .routing import accepts_finished_components, normalized
 
 HEADERS = {
     'parent_code':'Üst Ürün Kodu', 'parent_name':'Üst Ürün Adı',
@@ -20,6 +21,13 @@ HEADERS = {
 }
 KINDS = {'Mamul':'finished','Yarı Mamul':'semi','Hammadde':'raw','Parça':'part'}
 UNITS = {'Adet':'adet','KG':'kg','Metre':'m','Litre':'lt'}
+
+def component_card_kind(kind, category):
+    if accepts_finished_components(category):
+        equivalent = {'mamul':'finished', 'yari mamul':'semi'}.get(normalized(kind))
+        if equivalent:
+            return equivalent
+    return KINDS.get(kind,'')
 
 def text(value):
     return '' if value is None else str(value).strip()
@@ -68,7 +76,7 @@ def read_catalog(content):
                 for field,label in HEADERS.items():
                     if field_values[field] is None or text(field_values[field])=='':
                         record['issues'].append(f'{label} boş.')
-                if record['component_kind'] and record['component_kind'] not in KINDS:
+                if record['component_kind'] and not component_card_kind(record['component_kind'], sheet.title):
                     record['issues'].append('Bileşen türü tanınmıyor; kaynak değer korundu.')
                 if record['unit'] and record['unit'] not in UNITS:
                     record['issues'].append('Ölçü birimi tanınmıyor; kaynak değer korundu.')
@@ -106,19 +114,24 @@ def import_catalog(content, filename, actor=None):
     existing=CatalogImport.objects.filter(checksum=checksum).first()
     if existing: return existing,False
     rows=read_catalog(content)
-    specifications=defaultdict(lambda: {'names':set(),'kinds':set(),'units':set(),'categories':set()})
+    specifications=defaultdict(lambda: {'names':set(),'kinds':set(),'matching_kinds':set(),'units':set(),'categories':set()})
+    equivalent_codes=set()
     for row in rows:
-        for code,name,kind,unit in [
-            (row['parent_code'],row['parent_name'],'',''),
-            (row['component_code'],row['component_name'],KINDS.get(row['component_kind'],''),UNITS.get(row['unit'],'')),
+        component_kind=component_card_kind(row['component_kind'],row['sheet'])
+        equivalent=accepts_finished_components(row['sheet']) and component_kind in ('semi','finished')
+        if equivalent:
+            equivalent_codes.add(row['component_code'])
+        for code,name,kind,matching_kind,unit in [
+            (row['parent_code'],row['parent_name'],'','',''),
+            (row['component_code'],row['component_name'],component_kind,'semi' if equivalent else component_kind,UNITS.get(row['unit'],'')),
         ]:
             if not code: continue
             if len(code)>100 or len(name)>200:
                 raise ValidationError(f"{row['sheet']}:{row['row_number']}: kod veya ad çok uzun.")
             spec=specifications[code]
-            for key,value in [('names',name),('kinds',kind),('units',unit),('categories',row['sheet'])]:
+            for key,value in [('names',name),('kinds',kind),('matching_kinds',matching_kind),('units',unit),('categories',row['sheet'])]:
                 if value:spec[key].add(value)
-    conflicts={code for code,spec in specifications.items() if any(len(spec[key])>1 for key in ['names','kinds','units'])}
+    conflicts={code for code,spec in specifications.items() if any(len(spec[key])>1 for key in ['names','matching_kinds','units'])}
     products={}
     with transaction.atomic():
         batch,created=CatalogImport.objects.get_or_create(checksum=checksum,defaults={'filename':Path(filename).name[:240], 'created_by':actor})
@@ -126,11 +139,12 @@ def import_catalog(content, filename, actor=None):
         new_products=0
         for code,spec in specifications.items():
             if code in conflicts:continue
-            attrs={'name':next(iter(spec['names']),''),'kind':next(iter(spec['kinds']),''),'unit':next(iter(spec['units']),''),'category':next(iter(spec['categories'])) if len(spec['categories'])==1 else ''}
+            attrs={'name':next(iter(spec['names']),''),'kind':'semi' if 'semi' in spec['kinds'] else next(iter(spec['kinds']),''),'unit':next(iter(spec['units']),''),'category':next(iter(spec['categories'])) if len(spec['categories'])==1 else ''}
             product=Product.objects.filter(code=code).first()
             if product:
                 # Existing business data is not rewritten, including existing blanks.
-                if any(value and getattr(product,key)!=value for key,value in attrs.items() if key!='category'):
+                compatible_kind=code in equivalent_codes and product.kind in ('semi','finished') and attrs['kind'] in ('semi','finished')
+                if any(value and getattr(product,key)!=value for key,value in attrs.items() if key!='category' and not (key=='kind' and compatible_kind)):
                     conflicts.add(code)
                     continue
             else:

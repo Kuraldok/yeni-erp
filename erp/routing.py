@@ -1,4 +1,4 @@
-"""Explicit business rules supplied for fountain and park bench components."""
+"""Explicit category rules for component production and procurement routes."""
 from collections import defaultdict, Counter
 import unicodedata
 
@@ -9,6 +9,7 @@ from django.db.models import Max
 from .models import MaterialRequirement, Product, ProductionFlow, ProductionRoute, RouteStep
 from .workflows import ensure_workflows
 
+# Keep the existing identity so repeated setup preserves routes and custom steps.
 RULE_KEY = 'fountain-bench-v1'
 
 
@@ -16,10 +17,49 @@ def normalized(value):
     return ' '.join(unicodedata.normalize('NFC', value or '').casefold().replace('i\u0307', 'i').replace('ı', 'i').split())
 
 
+CASTING_CATEGORIES = {normalized(name) for name in (
+    'Şömine', 'Şömineler', 'Izgara', 'Izgaralar',
+    'Posta kutusu', 'Posta kutuları', 'Soba', 'Sobalar',
+    'Sandalye', 'Sandalyeler', 'Kapak', 'Kapaklar',
+    'Bariyer', 'Bariyerler', 'Ferforje korkuluk', 'Ferforje korkuluklar',
+    'Masa', 'Masalar', 'Masa ayağı', 'Masa ayakları',
+    'Masa ve masa ayakları', 'Masalar ve masa ayakları',
+    'Döküm saksı', 'Döküm saksılar', 'Döküm saksıları',
+)}
+WOOD_CATEGORIES = {normalized(name) for name in (
+    'Ahşap saksı', 'Ahşap saksılar', 'Ahşap saksıları',
+)}
+MANGAL_CATEGORIES = {normalized(name) for name in ('Mangal', 'Mangallar')}
+MANGAL_WOOD_COMPONENTS = {normalized(name) for name in (
+    'Ahşap saplı kulp', 'Tel ızgara sapı',
+)}
+
+
+def accepts_finished_components(category):
+    """Only the newly specified categories treat a Mamul component as semi-finished."""
+    return normalized(category) in CASTING_CATEGORIES | WOOD_CATEGORIES | MANGAL_CATEGORIES
+
+
+def is_semifinished_component(kind, category):
+    kind = normalized(kind)
+    return kind == 'yari mamul' or (kind == 'mamul' and accepts_finished_components(category))
+
+
 def component_method(line):
-    if normalized(line.component_kind) != 'yari mamul':
+    if not is_semifinished_component(line.component_kind, line.sheet):
+        return None
+    if line.component_code and line.component_code == line.parent_code:
         return None
     category = normalized(line.sheet)
+    if category in CASTING_CATEGORIES:
+        return 'casting'
+    if category in WOOD_CATEGORIES:
+        return 'wood'
+    if category in MANGAL_CATEGORIES:
+        name = normalized(line.component_name)
+        if not name:
+            return None
+        return 'wood' if name in MANGAL_WOOD_COMPONENTS else 'casting'
     if category in ('çeşme', 'çeşmeler'):
         return 'casting'
     if category in ('banklar', 'park bahçe banki'):
@@ -41,11 +81,13 @@ def apply_component_routes(source=None):
     if source is not None:
         affected = {line.component_id for line in lines if line.source_id==source.pk and component_method(line)}
     plans = defaultdict(set)
+    finished_components = set()
     missing = []
     for line in lines:
-        if normalized(line.component_kind)=='yari mamul' and normalized(line.sheet) in ('banklar','park bahçe banki') and not normalized(line.component_name):
+        category = normalized(line.sheet)
+        if is_semifinished_component(line.component_kind, line.sheet) and not normalized(line.component_name) and category in {'banklar', 'park bahçe banki'} | MANGAL_CATEGORIES:
             if source is None or line.source_id==source.pk:
-                missing.append(f'{line.sheet}:{line.row_number}: yarı mamul adı boş; hazır temin varsayılmadı.')
+                missing.append(f'{line.sheet}:{line.row_number}: bileşen adı boş; üretim/temin yolu atanmadı.')
             continue
         method = component_method(line)
         if not method or (affected is not None and line.component_id not in affected):
@@ -54,6 +96,8 @@ def apply_component_routes(source=None):
             missing.append(f'{line.sheet}:{line.row_number}: bileşen kartı eşleştirilmemiş.')
             continue
         plans[line.component_id].add(method)
+        if accepts_finished_components(line.sheet):
+            finished_components.add(line.component_id)
     if any(methods & {'wood', 'casting'} for methods in plans.values()):
         ensure_workflows()
     flows = {flow.code: flow for flow in ProductionFlow.objects.filter(code__in=['wood','casting'])}
@@ -61,7 +105,7 @@ def apply_component_routes(source=None):
     counts = Counter()
     for product_id, methods in sorted(plans.items()):
         product = Product.objects.select_for_update().get(pk=product_id)
-        if product.kind!='semi':
+        if product.kind!='semi' and not (product.kind=='finished' and product_id in finished_components):
             result['skipped'].append(f'{product.code}: kartın türü yarı mamul değil; değiştirilmedi.')
             continue
         if len(methods)!=1:
