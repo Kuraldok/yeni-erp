@@ -22,3 +22,10 @@
 - Chromium'da ayrı sentetik veritabanıyla sipariş → bağlı üretim → iki parti ve fire → kısmi teslimatlar → teslimat ters fişi → rezervasyon/bırakma → üretim ters fişi → iş iptali → transfer → sayım → rapor/CSV akışı tamamlandı.
 - Masaüstü ve mobil ekran boyutlarında taşma ve JavaScript hatası görülmedi. Fiziksel cihaz ve PostgreSQL yük/eşzamanlılık testi bu çalışmada yapılmadı.
 - Güncel operasyon geliştirmeleri yerelde doğrulandı; GitHub'a aktarım ve sunucuya dağıtım bu adımın kapsamında değildir.
+
+
+## Sehpalar rota kuralı — 30 Ekim 2026
+
+- Ana projede 204 test geçti; Django kontrolü ve migration tutarlılığı başarılı. Yeni migration gerekmedi.
+- Masa tablası ahşap, diğer adı belli yarı mamuller döküm olarak doğrulandı. Mamul etiketli bileşenler, ad/harf/boşluk farkları, kapsam dışı kartlar, eksik ad, ortak kart çelişkisi ve mevcut özel rota adımlarının korunması test edildi.
+- Geliştirme veritabanında henüz ürün/reçete kaydı bulunmadığından rota komutu 0 yeni kayıt oluşturdu. Yeni aktarımlarda kural otomatik uygulanır. Geliştirme veritabanının dosya özeti değişmedi; önceki kayıtlar ve kaynaklar korundu.

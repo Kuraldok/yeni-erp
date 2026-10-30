@@ -100,6 +100,8 @@ Ana ürün görünümü mevcut üst ürün ilişkilerinden belirlenir; yarı mam
 
 **Izgara / Izgaralar** ürünleri tek mamuldür; döküm rotası doğrudan ana ürün kartına bağlanır. Yarı mamul veya bileşen kodu oluşturulmaz. Bu gruptaki kodsuz hammadde satırlarının ihtiyaçları kaynak miktar ve birim üzerinden hesaplanır; mevcut miktar/birim ve döküm hammaddesi kontrolleri geçerlidir. Ürün ayrıntısında doğrudan üretim rotası ve ayrı hammadde bölümü gösterilir. Stok üretiminde kodsuz hammadde satırını ayrı tüketim kopyasında mevcut bir hammadde stok kartıyla eşleştirin; kaynak satıra kod eklenmez.
 
+**Sehpa / Sehpalar** grubunda **Masa tablası** yarı mamulleri ahşap, diğer adı belli yarı mamuller döküm üretimine bağlanır. Bileşen türü **Mamul** yazılmışsa aynı rota kuralı uygulanır; kaynak etiket ve kart türü korunur. Hammaddeler, parçalar ve ana ürün için bu kuralla rota oluşturulmaz. Yeni Excel aktarımlarında otomatik uygulanır; mevcut eşleştirilmiş reçeteler için `setup_component_routes` kullanılabilir. Adı boş veya başka kategoriyle çelişen bileşenler incelemeye bırakılır; mevcut özel rota adımları korunur.
+
 ## Sipariş ve kalemleri birlikte girme
 
 1. **Siparişler → Yeni Sipariş** yolunu açın. Numarayı, türü, uygun müşteri/tedarikçiyi, tarihi ve para birimini girin.

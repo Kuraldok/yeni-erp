@@ -34,6 +34,8 @@ MANGAL_WOOD_COMPONENTS = {normalized(name) for name in (
     'Ahşap saplı kulp', 'Tel ızgara sapı',
 )}
 GRILL_CATEGORIES = {normalized(name) for name in ('Izgara', 'Izgaralar')}
+SEHPA_CATEGORIES = {normalized(name) for name in ('Sehpa', 'Sehpalar')}
+SEHPA_WOOD_COMPONENTS = {normalized('Masa tablası')}
 
 
 def is_grill_category(category):
@@ -53,7 +55,7 @@ def requirement_issues(line):
 
 def accepts_finished_components(category):
     """Only the newly specified categories treat a Mamul component as semi-finished."""
-    return normalized(category) in CASTING_CATEGORIES | WOOD_CATEGORIES | MANGAL_CATEGORIES
+    return normalized(category) in CASTING_CATEGORIES | WOOD_CATEGORIES | MANGAL_CATEGORIES | SEHPA_CATEGORIES
 
 
 def is_semifinished_component(kind, category):
@@ -73,6 +75,11 @@ def component_method(line):
         return 'casting'
     if category in WOOD_CATEGORIES:
         return 'wood'
+    if category in SEHPA_CATEGORIES:
+        name = normalized(line.component_name)
+        if not name:
+            return None
+        return 'wood' if name in SEHPA_WOOD_COMPONENTS else 'casting'
     if category in MANGAL_CATEGORIES:
         name = normalized(line.component_name)
         if not name:
@@ -116,7 +123,7 @@ def apply_component_routes(source=None):
     missing = []
     for line in lines:
         category = normalized(line.sheet)
-        if is_semifinished_component(line.component_kind, line.sheet) and not normalized(line.component_name) and category in {'banklar', 'park bahçe banki'} | MANGAL_CATEGORIES:
+        if is_semifinished_component(line.component_kind, line.sheet) and not normalized(line.component_name) and category in {'banklar', 'park bahçe banki'} | MANGAL_CATEGORIES | SEHPA_CATEGORIES:
             if source is None or line.source_id==source.pk:
                 missing.append(f'{line.sheet}:{line.row_number}: bileşen adı boş; üretim/temin yolu atanmadı.')
             continue

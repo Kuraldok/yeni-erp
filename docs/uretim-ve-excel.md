@@ -123,6 +123,8 @@ Komut mevcut rotaları/adımları, elle girilmiş süreleri veya çelişen mevcu
 | Masa, Masa ayakları, Masa ve masa ayakları | Tüm yarı mamuller | Döküm |
 | Mangal | Ahşap saplı kulp, Tel ızgara sapı | Ahşap |
 | Mangal | Diğer adı belli yarı mamuller | Döküm |
+| Sehpa / Sehpalar | Masa tablası | Ahşap |
+| Sehpa / Sehpalar | Diğer adı belli yarı mamuller | Döküm |
 | Döküm saksı | Tüm yarı mamuller | Döküm |
 | Ahşap saksı | Tüm yarı mamuller | Ahşap |
 
@@ -131,6 +133,8 @@ Izgara dışındaki bu yeni kategorilerde **Mamul** etiketli reçete bileşenler
 **Izgara** tek mamulden oluşur. Döküm rotası, reçetenin bağlı olduğu ana ürün kartına veya Izgara grubunda elle açılmış bağımsız ana ürün kartına atanır. Bu gruba özel yarı mamul oluşturulmaz ve hammadde satırları yarı mamule dönüştürülmez. Bileşen kodu sütunu veya kod değeri boş olabilir. Kodsuz hammadde satırında bu boşluk eşleştirme hatası sayılmaz; ad, miktar ve ölçü birimi incelemesi devam eder. Önceki aktarımın özgün boş hücreleri ve inceleme notları saklanır; yalnızca bu beklenen boş koda ait uyarı güncel ihtiyaç hesabında ve inceleme görünümünde hata olarak gösterilmez. Kayıtlı hammadde adı ve miktarı üzerinden ihtiyaç hesaplanabilir; bu durum stok kartı veya stok hareketi oluşturmaz.
 
 Kategori eşleştirmesi Excel sayfa adına göre yapılır; tanımlı tekil/çoğul adlar, büyük/küçük harf ve fazla boşluk farklılıkları desteklenir. Örneğin Izgara/Izgaralar, Soba/Sobalar, Masa/Masalar, Döküm saksı/Döküm saksılar aynı kurala bağlanır. Mangalın ahşap istisnaları bileşen adının tamamına göre belirlenir; **Tel ızgara**, **Tel ızgara sapı** ile aynı bileşen sayılmaz. Adı boş Mangal bileşeninde üretim alanı tahmin edilmez; komut raporunda incelemeye bırakılır.
+
+Sehpa / Sehpalar grubunda ahşap istisnası **Masa tablası** bileşen adının tamamına uygulanır; büyük/küçük harf ve fazla boşluk farkları desteklenir. Diğer adı belli yarı mamuller dökümdür. Kaynakta Mamul yazan bileşenler de aynı kurala dahildir. Adı boş bir bileşenin tabla mı, diğer yarı mamul mü olduğu tahmin edilmez; inceleme notuyla rota ataması yapılmaz. Aynı stok kartının başka kategoride farklı rota gerektirmesi mevcut atamayı değiştirmez; çelişki raporlanır.
 
 Izgara ana mamulü istisnası dışındaki üst ürünlere, hammaddelere, parçalara veya bu kuralların dışındaki kategorilere yeni rota atanmaz. Aynı kod hem üst ürün hem kendi bileşeni olarak verilmişse kendine bağlı rota oluşturulmaz. Kart başka bir üründe bileşen olarak kullanılıyorsa o gerçek bileşen ilişkisi değerlendirilebilir. Bir kart için ahşap ve döküm gibi çelişkili kurallar çıkarsa mevcut atama korunur; yeni seçim yapılmaz ve `setup_component_routes` çıktısındaki `skipped` listesinde açıklanır.
 

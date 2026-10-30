@@ -107,3 +107,10 @@ Stok maliyeti depo bazında hareketli ağırlıklı ortalamadır. `StockMovement
 SQLite geliştirme testleri PostgreSQL eşzamanlılık garantisi sayılmaz. Canlıya geçişte eşzamanlı rezervasyon, teslimat ve üretim PostgreSQL üzerinde ayrıca doğrulanmalıdır. Bu geliştirme sunucu dağıtımı içermez.
 
 `0011` ile `StockMovement.value_adjustment` ters çıkışın özgün toplam maliyeti ile güncel ortalamadan çıkan değerini ayırır. Etkin stok değeri `total_cost + value_adjustment` üzerinden hesaplanır. Özgün tutar değiştirilmez; pozitif/negatif fark ayrı raporlanır. Ortalama maliyetler karıştıktan sonra ilk veya son partinin geri alınması, kalan stoğu negatif değerle veya kaybolan bakiye ile bırakmaz. Bilinmeyen maliyette fark da bilinmiyor kalır.
+
+
+## Sehpalar rota kuralı
+
+`SEHPA_CATEGORIES`, Sehpa/Sehpalar sayfalarını ortak normalizasyonla tanır. `component_method()` Masa tablası bileşenini ahşap, diğer adı belli yarı mamulleri döküm olarak sınıflandırır. Bu kategori `accepts_finished_components()` kapsamındadır; Mamul etiketli bileşenler stok kartı türü veya kaynak etiket değiştirilmeden eşdeğer kabul edilir. Adı boş satıra yöntem tahmin edilmez. Mevcut `RULE_KEY` ve rota uygulama servisi korunmuştur; aynı kart için tekrar çalıştırma rota/adım çoğaltmaz, özel adım ve süreleri ezmez. Kategoriler arası çelişki önceki atama korunarak raporlanır.
+
+`erp/test_sehpa_routes.py` ahşap/döküm ayrımını, tekil/çoğul ve harf/boşluk farklarını, Mamul etiketini, kapsam dışı hammadde/parça/ana ürünü, eksik adı, tekrar çalıştırmayı, özel adımları, ortak kart çelişkisini ve ürün ayrıntısındaki yarı mamul görünümünü doğrular. Yeni şema geçişi gerekmez; stok veya üretim fişi oluşturulmaz.
