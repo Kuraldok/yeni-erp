@@ -11,3 +11,12 @@ def requirement_amount(value, unit):
         return '—'
     places = '0' if str(unit).strip().casefold() == 'adet' else '3'
     return floatformat(value, places)
+
+
+@register.filter
+def requirement_list_amount(value, unit):
+    """The requirements list uses two decimals; other existing screens keep theirs."""
+    if value is None or value == '':
+        return '—'
+    places = '0' if str(unit).strip().casefold() == 'adet' else '2'
+    return floatformat(value, places)

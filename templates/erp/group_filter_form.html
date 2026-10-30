@@ -1,0 +1,11 @@
+{% load l10n %}
+<section class="panel">
+  <form method="get" class="search">
+    <div class="filters">
+      {% if quantity %}<input type="hidden" name="quantity" value="{{ quantity|unlocalize }}">{% endif %}
+      {% include 'erp/group_filter_control.html' %}
+      <button class="button secondary">Filtrele</button>
+      {% if category %}<a href="{{ request.path }}{% if quantity %}?quantity={{ quantity|unlocalize }}{% endif %}">Temizle</a>{% endif %}
+    </div>
+  </form>
+</section>

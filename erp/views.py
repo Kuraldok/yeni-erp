@@ -9,27 +9,36 @@ from django.forms import modelform_factory
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import Http404
 from django.urls import reverse
-from .models import Product, Partner, Order, StockMovement, ProductionJob, ProductionRoute, MaterialRecipe, stock_balance
+from .models import Product, Partner, Order, StockMovement, ProductionJob, ProductionRoute, MaterialRecipe, MaterialRequirement, stock_balance
 from .registry import MODULES, READ_ONLY_MODELS
-from .products import main_products, product_groups, filter_group
+from .products import main_products, order_product_cards
+from .group_filters import available_groups, can_filter_groups, filter_by_group
+from .templatetags.erp_numbers import requirement_list_amount
 
 @login_required
 def dashboard(request):
+    category = request.GET.get('category', '').strip()
+    def scoped(model):
+        if category and not can_filter_groups(request.user, model):
+            return model.objects.none()
+        return filter_by_group(model.objects.all(), category, request.user)
     stats = []
     for model, title in [(Product,'Ürün'),(Partner,'Müşteri / tedarikçi'),(Order,'Sipariş'),(StockMovement,'Stok hareketi')]:
         if request.user.has_perm(f'erp.view_{model._meta.model_name}'):
-            count = main_products().count() if model is Product else model.objects.count()
+            if category and not can_filter_groups(request.user, model):
+                continue
+            count = filter_by_group(main_products(), category, request.user).count() if model is Product else scoped(model).count()
             stats.append((title, count))
     balances = []
     if request.user.has_perm('erp.view_stockmovement') and request.user.has_perm('erp.view_product'):
-        for product in Product.objects.filter(active=True)[:50]:
+        for product in scoped(Product).filter(active=True)[:50]:
             quantity = stock_balance(product)
             balances.append({'product':product, 'quantity':quantity, 'low':product.minimum_stock is not None and quantity < product.minimum_stock})
-    recent = StockMovement.objects.select_related('product','warehouse','created_by')[:8] if request.user.has_perm('erp.view_stockmovement') else []
+    recent = scoped(StockMovement).select_related('product','warehouse','created_by')[:8] if request.user.has_perm('erp.view_stockmovement') else []
     from .models import ProductionFlow, CatalogImport
-    flows=ProductionFlow.objects.prefetch_related('steps').all() if request.user.has_perm('erp.view_productionflow') else []
-    catalog=CatalogImport.objects.first() if request.user.has_perm('erp.view_catalogimport') else None
-    return render(request, 'erp/dashboard.html', {'stats':stats,'balances':balances,'recent':recent,'flows':flows,'catalog':catalog})
+    flows=scoped(ProductionFlow).prefetch_related('steps') if request.user.has_perm('erp.view_productionflow') else []
+    catalog=scoped(CatalogImport).first() if request.user.has_perm('erp.view_catalogimport') else None
+    return render(request, 'erp/dashboard.html', {'stats':stats,'balances':balances,'recent':recent,'flows':flows,'catalog':catalog,'groups':available_groups(request.user),'category':category,'can_filter_groups':True})
 
 def module(slug):
     if slug not in MODULES: raise Http404
@@ -43,13 +52,13 @@ def listing(request, slug):
     model, title, fields = module(slug)
     if not permitted(request.user,'view',model): raise PermissionDenied
     qs = model.objects.all()
-    groups = []
-    category = ''
+    category = request.GET.get('category', '').strip()
+    can_filter = can_filter_groups(request.user, model)
+    groups = available_groups(request.user) if can_filter else []
     if model is Product:
         qs = main_products()
-        groups = product_groups(qs)
-        category = request.GET.get('category', '').strip()
-        qs = filter_group(qs, category).prefetch_related('materialrecipe_set')
+        qs = qs.prefetch_related('materialrecipe_set')
+    qs = filter_by_group(qs, category, request.user)
     search = request.GET.get('q','').strip()
     if search:
         condition = Q()
@@ -57,7 +66,10 @@ def listing(request, slug):
             if isinstance(field, (CharField, TextField)):
                 condition |= Q(**{field.name+'__icontains':search})
         if condition: qs = qs.filter(condition)
-    qs = qs.order_by(*model._meta.ordering) if model._meta.ordering else qs.order_by('-pk')
+    if model is Product:
+        qs = order_product_cards(qs)
+    else:
+        qs = qs.order_by(*model._meta.ordering) if model._meta.ordering else qs.order_by('-pk')
     if model is Order: qs = qs.prefetch_related('lines')
     if model is MaterialRecipe: qs = qs.select_related('source','product')
     qs = qs.select_related()
@@ -70,6 +82,12 @@ def listing(request, slug):
         values = []
         for field in fields:
             value = getattr(obj, f'get_{field}_display', lambda: getattr(obj, field))()
+            if model is MaterialRequirement:
+                if field == 'quantity':
+                    value = requirement_list_amount(obj.quantity, obj.unit)
+                elif field == 'issues':
+                    from .routing import requirement_issues
+                    value = requirement_issues(obj)
             if model is Product and field == 'category':
                 names = {r.sheet for r in obj.materialrecipe_set.all() if r.sheet}
                 if obj.category:
@@ -83,7 +101,7 @@ def listing(request, slug):
         detail=reverse(detail_names[slug],args=[obj.pk]) if slug in detail_names else ''
         editable=model is not ProductionJob or obj.state=='draft'
         rows.append({'pk':obj.pk, 'values':values,'detail':detail,'editable':editable,'product_detail':detail if model is Product else ''})
-    return render(request,'erp/list.html', {'title':title,'slug':slug,'has_detail':slug in ['urunler','rotalar','receteler','excel-aktarimlari','uretim-akislari','uretim-isleri'],'headers':headers,'rows':rows,'page':page,'q':search,'groups':groups,'category':category,'can_add':model not in READ_ONLY_MODELS and permitted(request.user,'add',model),'can_edit':model not in READ_ONLY_MODELS and model is not StockMovement and permitted(request.user,'change',model)})
+    return render(request,'erp/list.html', {'title':title,'slug':slug,'has_detail':slug in ['urunler','rotalar','receteler','excel-aktarimlari','uretim-akislari','uretim-isleri'],'headers':headers,'rows':rows,'page':page,'q':search,'groups':groups,'category':category,'can_filter_groups':can_filter,'can_add':model not in READ_ONLY_MODELS and permitted(request.user,'add',model),'can_edit':model not in READ_ONLY_MODELS and model is not StockMovement and permitted(request.user,'change',model)})
 
 
 @login_required
@@ -94,6 +112,9 @@ def product_detail(request, pk):
     group_names = {r.sheet for r in product.materialrecipe_set.all() if r.sheet}
     if product.category:
         group_names.add(product.category)
+    from .routing import is_grill_category
+    is_grill = any(is_grill_category(name) for name in group_names)
+    direct_routes = product.productionroute_set.filter(active=True).select_related('flow') if request.user.has_perm('erp.view_productionroute') else []
     can_view_components = all(request.user.has_perm('erp.' + permission) for permission in (
         'view_materialrecipe', 'view_materialrequirement',
     ))
@@ -128,6 +149,7 @@ def product_detail(request, pk):
         'product': product, 'tab': tab, 'can_view_components': can_view_components,
         'recipes': recipes, 'selected_recipe': selected_recipe, 'sections': sections,
         'slug': 'urunler', 'display_group': ', '.join(sorted(group_names)) or '—',
+        'is_grill': is_grill, 'direct_routes': direct_routes,
     })
 
 @login_required
@@ -207,11 +229,24 @@ def catalog_upload(request):
 @login_required
 def catalog_report(request,pk):
     from .models import CatalogImport
+    from .catalog import HEADERS
+    from .routing import requirement_issues
     if not all(request.user.has_perm('erp.'+p) for p in ['view_catalogimport','view_materialrecipe','view_materialrequirement']):raise PermissionDenied
     batch=get_object_or_404(CatalogImport,pk=pk)
-    rows=batch.materialrequirement_set.exclude(issues=[]).order_by('sheet','row_number')
+    category=request.GET.get('category','').strip()
+    selected=filter_by_group(batch.materialrequirement_set.all(),category,request.user)
+    rows=selected.exclude(issues=[])
+    obsolete=[line.pk for line in rows if not requirement_issues(line)]
+    rows=rows.exclude(pk__in=obsolete).order_by('sheet','row_number')
     page=Paginator(rows,50).get_page(request.GET.get('page'))
-    return render(request,'erp/import_report.html',{'batch':batch,'page':page})
+    for line in page:
+        line.display_issues=requirement_issues(line)
+    selected_rows=list(selected) if category else []
+    blank_fields={label:sum(line.raw.get(label) in (None,'') for line in selected_rows) for label in HEADERS.values()} if category else batch.summary.get('blank_fields',{})
+    codes={code for line in selected_rows for code in (line.parent_code,line.component_code)}
+    conflicts=[code for code in batch.summary.get('conflict_codes',[]) if not category or code in codes]
+    report_stats={'sheets':selected.values('sheet').distinct().count(),'rows':selected.count(),'issues':rows.count()}
+    return render(request,'erp/import_report.html',{'batch':batch,'page':page,'report_stats':report_stats,'blank_fields':blank_fields,'conflict_codes':conflicts,'groups':available_groups(request.user),'category':category,'can_filter_groups':True})
 
 @login_required
 def recipe_detail(request,pk):
@@ -219,6 +254,8 @@ def recipe_detail(request,pk):
     from .production import material_plan
     if not request.user.has_perm('erp.view_materialrecipe') or not request.user.has_perm('erp.view_materialrequirement'):raise PermissionDenied
     recipe=get_object_or_404(MaterialRecipe.objects.select_related('source','product'),pk=pk)
+    category=request.GET.get('category','').strip()
+    matches_group=filter_by_group(MaterialRecipe.objects.filter(pk=pk),category,request.user).exists()
     error=''
     try:
         quantity=Decimal(request.GET.get('quantity','1').replace(',','.'))
@@ -226,8 +263,8 @@ def recipe_detail(request,pk):
     except (InvalidOperation,ValueError):
         quantity=None
         error='Pozitif, en fazla üç ondalıklı ve bir milyardan küçük bir üretim miktarı girin.'
-    rows,problems=material_plan(recipe,quantity) if quantity is not None else ([],[])
-    return render(request,'erp/recipe.html',{'recipe':recipe,'quantity':quantity,'rows':rows,'problems':problems,'error':error})
+    rows,problems=material_plan(recipe,quantity) if quantity is not None and matches_group else ([],[])
+    return render(request,'erp/recipe.html',{'recipe':recipe,'quantity':quantity,'rows':rows,'problems':problems,'error':error,'groups':available_groups(request.user),'category':category,'can_filter_groups':True,'matches_group':matches_group})
 
 @login_required
 def flow_detail(request,pk):

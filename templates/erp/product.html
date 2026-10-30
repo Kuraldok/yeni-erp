@@ -4,6 +4,8 @@
 {% block content %}
 <a href="{% url 'listing' 'urunler' %}">← Ürün kartları</a>
 <div class="page-heading"><div><p class="eyebrow">ANA ÜRÜN</p><h1>{{ product.name|default:product.code }}</h1><p class="muted">{{ product.code }}</p></div>{% if perms.erp.change_product %}<a class="button secondary" href="{% url 'edit' 'urunler' product.pk %}">Ürün kartını düzenle</a>{% endif %}</div>
+{% if is_grill %}<p class="notice">Bu Izgara ürünü tek mamul olarak dökümde üretilir; yarı mamul bulunmaz. Hammadde ihtiyaçları aşağıda ayrı gösterilir.</p>{% endif %}
+{% if direct_routes %}<section class="panel"><h2>Ürünün üretim rotaları</h2><ul>{% for route in direct_routes %}<li><a href="{% url 'route_detail' route.pk %}">{{ route.name }} · v{{ route.version }}</a></li>{% endfor %}</ul></section>{% endif %}
 <nav class="product-tabs" aria-label="Ürün ayrıntı sekmeleri">
   <a href="?tab=overview{% if selected_recipe %}&amp;recipe={{ selected_recipe.pk }}{% endif %}" {% if tab == 'overview' %}aria-current="page"{% endif %}>Ürün bilgileri</a>
   {% if can_view_components %}<a href="?tab=components{% if selected_recipe %}&amp;recipe={{ selected_recipe.pk }}{% endif %}" {% if tab == 'components' %}aria-current="page"{% endif %}>Yarı mamuller ve hammaddeler</a>{% endif %}

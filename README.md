@@ -79,7 +79,9 @@ Kodun GitHub deposu: [Kuraldok/yeni-erp](https://github.com/Kuraldok/yeni-erp). 
 
 ## Ürün kartları ve ürün grupları
 
-Arayüz başlığı **Kural Döküm** olarak kullanılır. **Ürün kartları** listesinde ana ürünler görünür. Ürün grubu seçip **Filtrele** düğmesine basabilirsiniz; metin araması aynı anda kullanılabilir ve sayfa değiştirirken filtreler korunur. Grubu boş olan kayıtlar için **Grubu belirtilmeyenler** seçeneği vardır.
+Arayüz başlığı **Kural Döküm** olarak kullanılır. **Ürün kartları** listesinde ana ürünler önce ürün grubuna, sonra ürün koduna göre sıralanır. Kartın grubu boşsa reçete kaynak grubu kullanılır; birden fazla grup varsa alfabetik ilk grup sıralamayı belirler. Ürün grubu seçip **Filtrele** düğmesine basabilirsiniz; metin araması aynı anda kullanılabilir ve sayfa değiştirirken filtreler korunur. Grubu boş olan kayıtlar için **Grubu belirtilmeyenler** seçeneği vardır.
+
+Ürün grubu filtresi ana panelde, bütün modül listelerinde, Excel aktarım raporunda ve reçete ihtiyaç hesabında bulunur. Siparişler kalemlerindeki, depolar stok hareketlerindeki, cariler siparişlerindeki ürünlere göre süzülür. Birden fazla eşleşme kaydı çoğaltmaz; sipariş toplamı tüm kalemleri kapsar. Dolaylı filtre için ilgili kayıtları görüntüleme izni gerekir. Siparişler listesindeki oluşturma düğmesi **Yeni Sipariş** olarak adlandırılır.
 
 Ana ürünün koduna, adına veya **Ayrıntılar** bağlantısına tıkladığınızda yeni tarayıcı sekmesi açılır. Burada **Ürün bilgileri** ve **Yarı mamuller ve hammaddeler** sekmeleri bulunur. Bileşenlerin kodu, adı, birim ihtiyacı, ölçü birimi, biliniyorsa üretim alanı, kaynak satırı ve inceleme notları gösterilir. Kaynakta Mamul/Parça gibi diğer türde verilen bileşenler ayrı bölümde korunur. Birden fazla reçete sürümü varsa kaynak seçilir; farklı sürümlerin miktarları birleştirilmez.
 
@@ -87,9 +89,13 @@ Ana ürün görünümü mevcut üst ürün ilişkilerinden belirlenir; yarı mam
 
 Ürün ayrıntısındaki birim ihtiyaçlar adet için ondalıksız, diğer ölçü birimleri için üç ondalık basamakla gösterilir (örneğin `2 Adet`, `21,000 KG`). Aynı gösterim reçetenin ihtiyaç hesabında da kullanılır. Bu yalnızca ekrandaki biçimdir; hesaplamalarda ve veri tabanında özgün hassasiyet korunur. Boş miktarlar boş kalır. Ana kontrol panelindeki ürün toplamı, Ürün Kartları listesindeki ana ürünleri sayar; bileşenleri veya aynı ürüne ait farklı reçete sürümlerini ayrıca saymaz.
 
+**Reçete satırları ve eksikler** listesindeki **Bir üst ürün için ihtiyaç** sütunu adet için ondalıksız, diğer birimler için iki ondalık basamakla gösterilir (`2`, `8,45`, `7,00`). Bu biçimlendirme miktarları yalnızca ekranda yuvarlar; kaynak ve kayıtlı değerler korunur.
+
 
 ## Yarı mamul üretim ve temin rotaları
 
 Çeşmelerin tüm yarı mamulleri döküm üretimine; bankların Taşıyıcı Ayak/Gövde yarı mamulleri döküme, Ahşap Bölüm yarı mamulleri ahşap üretimine bağlanır. Diğer bank yarı mamulleri dışarıdan hazır temin edilir. Rotalar ana ürünün yarı mamul ayrıntılarından ve **Üretim ve temin rotaları** menüsünden açılır. Hazır temin kartları için iç üretim işi açılamaz. Ayrıntılar ve tekrar çalıştırılabilir kurulum komutu [üretim rehberinde](docs/uretim-ve-excel.md) yer alır.
 
-Şömineler, Izgara, Posta kutusu, Soba, Sandalye, Kapak, Bariyer, Ferforje korkuluk, Masa ve masa ayakları ile Döküm saksı bileşenleri döküme; Ahşap saksı bileşenleri ahşaba bağlanır. Mangalda **Ahşap saplı kulp** ve **Tel ızgara sapı** ahşap, diğer adı belli yarı mamuller döküm üretimidir. Bu yeni kategorilerde reçete bileşeni olarak **Mamul** yazılan satırlar da yarı mamul gibi rota alır; özgün Excel değerleri ve mevcut kart türleri korunur. Hammaddeler ve parçalar bu kuralla sınıflandırılmaz. Ayrıntılar ve eksik/çelişkili kayıtların davranışı [kategori kuralları bölümünde](docs/uretim-ve-excel.md#diğer-kategorilerin-üretim-rotaları) açıklanır.
+Şömineler, Posta kutusu, Soba, Sandalye, Kapak, Bariyer, Ferforje korkuluk, Masa ve masa ayakları ile Döküm saksı bileşenleri döküme; Ahşap saksı bileşenleri ahşaba bağlanır. Mangalda **Ahşap saplı kulp** ve **Tel ızgara sapı** ahşap, diğer adı belli yarı mamuller döküm üretimidir. Bu yeni kategorilerde reçete bileşeni olarak **Mamul** yazılan satırlar da yarı mamul gibi rota alır; özgün Excel değerleri ve mevcut kart türleri korunur. Hammaddeler ve parçalar bu kuralla sınıflandırılmaz. Ayrıntılar ve eksik/çelişkili kayıtların davranışı [kategori kuralları bölümünde](docs/uretim-ve-excel.md#diğer-kategorilerin-üretim-rotaları) açıklanır.
+
+**Izgara / Izgaralar** ürünleri tek mamuldür; döküm rotası doğrudan ana ürün kartına bağlanır. Yarı mamul veya bileşen kodu oluşturulmaz. Bu gruptaki kodsuz hammadde satırlarının ihtiyaçları kaynak miktar ve birim üzerinden hesaplanır; mevcut miktar/birim ve döküm hammaddesi kontrolleri geçerlidir. Ürün ayrıntısında doğrudan üretim rotası ve ayrı hammadde bölümü gösterilir. Bu kayıtlar da stokları otomatik değiştirmez.

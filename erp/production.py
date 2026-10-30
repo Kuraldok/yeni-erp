@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 from .models import ProductionJob, ProductionJobStep, ProductionRoute
+from .routing import is_codeless_grill_material, requirement_issues
 
 
 def material_plan(recipe, quantity):
@@ -13,8 +14,9 @@ def material_plan(recipe, quantity):
     for route in ProductionRoute.objects.filter(product_id__in=[line.component_id for line in lines if line.component_id],active=True).select_related('flow').order_by('product_id','-version'):
         routes.setdefault(route.product_id,route)
     for line in lines:
-        issues=list(line.issues)
-        if not line.component_id: issues.append('Stok kartı eşleştirmesi yok.')
+        issues=requirement_issues(line)
+        if not line.component_id and not is_codeless_grill_material(line.component_kind, line.sheet, line.component_code):
+            issues.append('Stok kartı eşleştirmesi yok.')
         rows.append({'line':line,'required':line.quantity*quantity if line.quantity is not None else None,'issues':issues,'route':routes.get(line.component_id)})
         problems.extend(f'{line.sheet}:{line.row_number}: {issue}' for issue in issues)
     if not rows:problems.append('Reçetenin bileşen satırı yok.')

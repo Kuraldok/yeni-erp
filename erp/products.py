@@ -1,5 +1,6 @@
 """Main product display derives from explicit upper-product relationships."""
-from django.db.models import Q
+from django.db.models import Case, CharField, F, Min, Q, Value, When
+from django.db.models.functions import Coalesce
 
 from .models import MaterialRecipe, MaterialRequirement, Product
 
@@ -33,3 +34,17 @@ def filter_group(products, category):
         upper_ids = MaterialRecipe.objects.filter(sheet=category, product__isnull=False).values('product_id')
         return products.filter(Q(category=category) | Q(pk__in=upper_ids))
     return products
+
+
+def order_product_cards(products):
+    """Use the first displayed group, including source groups on unclassified cards."""
+    return products.annotate(
+        source_group=Min('materialrecipe__sheet', filter=~Q(materialrecipe__sheet='')),
+    ).annotate(
+        first_group=Case(
+            When(category='', then=Coalesce('source_group', Value(''))),
+            When(source_group__isnull=True, then=F('category')),
+            When(category__lte=F('source_group'), then=F('category')),
+            default=F('source_group'), output_field=CharField(),
+        ),
+    ).order_by('first_group', 'code', 'pk')

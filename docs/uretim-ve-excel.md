@@ -113,7 +113,7 @@ Komut mevcut rotaları/adımları, elle girilmiş süreleri veya çelişen mevcu
 | Kategori | Reçete bileşeni | Üretim rotası |
 | --- | --- | --- |
 | Şömineler | Tüm yarı mamuller | Döküm |
-| Izgara | Tüm yarı mamuller | Döküm |
+| Izgara / Izgaralar | Doğrudan ana mamul; yarı mamul yok | Döküm |
 | Posta kutusu | Tüm yarı mamuller | Döküm |
 | Soba | Tüm yarı mamuller | Döküm |
 | Sandalye | Tüm yarı mamuller | Döküm |
@@ -126,10 +126,24 @@ Komut mevcut rotaları/adımları, elle girilmiş süreleri veya çelişen mevcu
 | Döküm saksı | Tüm yarı mamuller | Döküm |
 | Ahşap saksı | Tüm yarı mamuller | Ahşap |
 
-Bu tablodaki kategorilerde **Mamul** etiketli reçete bileşenleri de **Yarı mamuller** bölümünde gösterilir ve aynı kurallarla rota alır. Kaynak tür etiketi, özgün hücreler ve mevcut kart türü değiştirilmez. Aynı bileşen kodu bir satırda Mamul, diğerinde Yarı Mamul olarak verilmişse ad ve birim uyumlu olduğunda aynı karta bağlanır. Ad, birim veya hammadde/parça türü uyuşmazlıkları bu istisnaya girmez. Çeşme ve bankların önceki Mamul yorumlaması değişmez.
+Izgara dışındaki bu yeni kategorilerde **Mamul** etiketli reçete bileşenleri de **Yarı mamuller** bölümünde gösterilir ve aynı kurallarla rota alır. Kaynak tür etiketi, özgün hücreler ve mevcut kart türü değiştirilmez. Aynı bileşen kodu bir satırda Mamul, diğerinde Yarı Mamul olarak verilmişse ad ve birim uyumlu olduğunda aynı karta bağlanır. Ad, birim veya hammadde/parça türü uyuşmazlıkları bu istisnaya girmez. Çeşme ve bankların önceki Mamul yorumlaması değişmez.
+
+**Izgara** tek mamulden oluşur. Döküm rotası, reçetenin bağlı olduğu ana ürün kartına veya Izgara grubunda elle açılmış bağımsız ana ürün kartına atanır. Bu gruba özel yarı mamul oluşturulmaz ve hammadde satırları yarı mamule dönüştürülmez. Bileşen kodu sütunu veya kod değeri boş olabilir. Kodsuz hammadde satırında bu boşluk eşleştirme hatası sayılmaz; ad, miktar ve ölçü birimi incelemesi devam eder. Önceki aktarımın özgün boş hücreleri ve inceleme notları saklanır; yalnızca bu beklenen boş koda ait uyarı güncel ihtiyaç hesabında ve inceleme görünümünde hata olarak gösterilmez. Kayıtlı hammadde adı ve miktarı üzerinden ihtiyaç hesaplanabilir; bu durum stok kartı veya stok hareketi oluşturmaz.
 
 Kategori eşleştirmesi Excel sayfa adına göre yapılır; tanımlı tekil/çoğul adlar, büyük/küçük harf ve fazla boşluk farklılıkları desteklenir. Örneğin Izgara/Izgaralar, Soba/Sobalar, Masa/Masalar, Döküm saksı/Döküm saksılar aynı kurala bağlanır. Mangalın ahşap istisnaları bileşen adının tamamına göre belirlenir; **Tel ızgara**, **Tel ızgara sapı** ile aynı bileşen sayılmaz. Adı boş Mangal bileşeninde üretim alanı tahmin edilmez; komut raporunda incelemeye bırakılır.
 
-Üst ürünün kendisine, hammaddelere, parçalara veya bu kuralların dışındaki kategorilere yeni rota atanmaz. Aynı kod hem üst ürün hem kendi bileşeni olarak verilmişse kendine bağlı rota oluşturulmaz. Kart başka bir üründe bileşen olarak kullanılıyorsa o gerçek bileşen ilişkisi değerlendirilebilir. Bir kart için ahşap ve döküm gibi çelişkili kurallar çıkarsa mevcut atama korunur; yeni seçim yapılmaz ve `setup_component_routes` çıktısındaki `skipped` listesinde açıklanır.
+Izgara ana mamulü istisnası dışındaki üst ürünlere, hammaddelere, parçalara veya bu kuralların dışındaki kategorilere yeni rota atanmaz. Aynı kod hem üst ürün hem kendi bileşeni olarak verilmişse kendine bağlı rota oluşturulmaz. Kart başka bir üründe bileşen olarak kullanılıyorsa o gerçek bileşen ilişkisi değerlendirilebilir. Bir kart için ahşap ve döküm gibi çelişkili kurallar çıkarsa mevcut atama korunur; yeni seçim yapılmaz ve `setup_component_routes` çıktısındaki `skipped` listesinde açıklanır.
 
 Yeni Excel aktarımlarında kurallar otomatik uygulanır. Önceden aktarılmış ve kart bağlantısı bulunan satırlar için aynı `setup_component_routes` komutunu kullanın. Aynı dosyayı yeniden yüklemek aktarımı tekrarlamaz. Önceden çelişki nedeniyle kart bağlantısı boş bırakılmış kaynak satırları bu komutla yeniden yazılmaz; bu kayıtlar ayrıca incelenmelidir. Mevcut rotalar, adımlar, süreler ve başlatılmış iş emirleri korunur; bilinmeyen süre veya malzeme miktarı eklenmez.
+
+## Ürün grubu filtresi ve ihtiyaç gösterimi
+
+Ana panelde ve tüm modül listelerinde **Ürün grubu → Filtrele** ile gruba göre süzün. Arama ile birlikte kullanılabilir; liste sayfası değiştiğinde iki seçim de korunur. Ürün kartlarında sıralama grup, ardından ürün kodudur. Kaynak reçete grubu bulunan boş kategori kartı da o grup altında sıralanır; çok gruplu kartta alfabetik ilk grup kullanılır.
+
+Stok, rota, rota adımı ve iş emirleri bağlı ürüne; siparişler ve cariler sipariş kalemlerine; depolar stok hareketlerine göre seçilir. Akışlar ilişkili rota ve iş emirlerine, Excel aktarımları kaynak reçete ve satırlarına göre süzülür. Kod eşleştirmesi olmayan reçete satırları kaynak sayfa grubuyla bulunur. **Grubu belirtilmeyenler**, hiçbir ürün grubu ilişkisi bulunmayan kayıtları seçer. Karma gruplu sipariş seçilen gruptan en az bir kalemi varsa bir kez görünür; toplamı tüm kalemleri kapsar. Ürünle ortak kullanılan bir bileşen birden fazla grubun filtresinde bulunabilir.
+
+Dolaylı filtreler için ilişkili kayıtları görüntüleme izinleri gerekir; izin yoksa kontrol pasif olur ve doğrudan filtre isteği reddedilir. Ana panelde seçilen gruba göre hesaplanamayan, yetkisiz ilişkilere ait özet gösterilmez.
+
+Excel aktarım raporunun satır, sayfa ve güncel inceleme sayıları seçilen gruba göre hesaplanır; boş alan ve kod çelişkisi bölümleri de aynı gruba aittir. Yeni ürün kartı sayısı yalnızca aktarımın tamamında gösterilir, çünkü geçmiş kartların hangi aktarımda oluşturulduğu kart bazında tutulmaz. İhtiyaç hesabında üretim miktarı ve ürün grubu seçimleri korunur.
+
+**Reçete satırları ve eksikler** listesindeki **Bir üst ürün için ihtiyaç** sütununda Adet ondalıksız, diğer birimler iki basamakla gösterilir. Örneğin `2`, `12,35`, `7,00`; bilinmeyen miktar `—` olarak kalır. Yuvarlama yalnızca gösterimi etkiler; hesaplama ve kaynak hassasiyeti korunur. Ürün ayrıntısı ve ihtiyaç hesabındaki önceki üç basamaklı gösterim devam eder.

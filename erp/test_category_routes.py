@@ -25,7 +25,7 @@ class CategoryRoutingTests(TestCase):
 
     def test_specified_casting_categories_accept_both_component_labels(self):
         categories = (
-            'Şömineler', 'Izgara', 'Posta kutusu', 'Soba', 'Sandalye', 'Kapak',
+            'Şömineler', 'Posta kutusu', 'Soba', 'Sandalye', 'Kapak',
             'Bariyer', 'Ferforje korkuluk', 'Masa', 'Masa ayakları',
             'Masa ve masa ayakları', 'Döküm saksı',
         )
@@ -83,7 +83,7 @@ class CategoryRoutingTests(TestCase):
 
     def test_category_aliases_case_and_whitespace(self):
         cases = [
-            ('Şömine', 'casting'), ('Izgaralar', 'casting'),
+            ('Şömine', 'casting'),
             ('Posta kutuları', 'casting'), ('Sobalar', 'casting'),
             ('Sandalyeler', 'casting'), ('Kapaklar', 'casting'),
             ('Bariyerler', 'casting'), ('Ferforje korkuluklar', 'casting'),

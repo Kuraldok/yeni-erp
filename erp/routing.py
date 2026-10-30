@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Max
 
-from .models import MaterialRequirement, Product, ProductionFlow, ProductionRoute, RouteStep
+from .models import MaterialRecipe, MaterialRequirement, Product, ProductionFlow, ProductionRoute, RouteStep
 from .workflows import ensure_workflows
 
 # Keep the existing identity so repeated setup preserves routes and custom steps.
@@ -18,7 +18,7 @@ def normalized(value):
 
 
 CASTING_CATEGORIES = {normalized(name) for name in (
-    'Şömine', 'Şömineler', 'Izgara', 'Izgaralar',
+    'Şömine', 'Şömineler',
     'Posta kutusu', 'Posta kutuları', 'Soba', 'Sobalar',
     'Sandalye', 'Sandalyeler', 'Kapak', 'Kapaklar',
     'Bariyer', 'Bariyerler', 'Ferforje korkuluk', 'Ferforje korkuluklar',
@@ -33,6 +33,22 @@ MANGAL_CATEGORIES = {normalized(name) for name in ('Mangal', 'Mangallar')}
 MANGAL_WOOD_COMPONENTS = {normalized(name) for name in (
     'Ahşap saplı kulp', 'Tel ızgara sapı',
 )}
+GRILL_CATEGORIES = {normalized(name) for name in ('Izgara', 'Izgaralar')}
+
+
+def is_grill_category(category):
+    return normalized(category) in GRILL_CATEGORIES
+
+
+def is_codeless_grill_material(kind, category, code):
+    return is_grill_category(category) and normalized(kind) == 'hammadde' and not code
+
+
+def requirement_issues(line):
+    """Keep historical source notes stored; omit the now-intentional blank code."""
+    if is_codeless_grill_material(line.component_kind, line.sheet, line.component_code):
+        return [issue for issue in line.issues if issue != 'Bileşen Kodu boş.']
+    return list(line.issues)
 
 
 def accepts_finished_components(category):
@@ -46,6 +62,8 @@ def is_semifinished_component(kind, category):
 
 
 def component_method(line):
+    if is_grill_category(line.sheet):
+        return None
     if not is_semifinished_component(line.component_kind, line.sheet):
         return None
     if line.component_code and line.component_code == line.parent_code:
@@ -76,11 +94,24 @@ def component_method(line):
 
 @transaction.atomic
 def apply_component_routes(source=None):
+    from .products import main_products
     lines = list(MaterialRequirement.objects.select_related('component').all())
+    main_ids = main_products().values('pk')
+    grill_products = {
+        pk for pk, category in Product.objects.filter(pk__in=main_ids).values_list('pk', 'category')
+        if is_grill_category(category)
+    }
+    grill_recipes = [recipe for recipe in MaterialRecipe.objects.filter(product_id__in=main_ids)
+                     if is_grill_category(recipe.sheet)]
+    grill_products.update(recipe.product_id for recipe in grill_recipes)
     affected = None
     if source is not None:
         affected = {line.component_id for line in lines if line.source_id==source.pk and component_method(line)}
+        affected.update(recipe.product_id for recipe in grill_recipes if recipe.source_id == source.pk)
     plans = defaultdict(set)
+    direct_products = grill_products if affected is None else grill_products & affected
+    for product_id in direct_products:
+        plans[product_id].add('casting')
     finished_components = set()
     missing = []
     for line in lines:
@@ -105,7 +136,8 @@ def apply_component_routes(source=None):
     counts = Counter()
     for product_id, methods in sorted(plans.items()):
         product = Product.objects.select_for_update().get(pk=product_id)
-        if product.kind!='semi' and not (product.kind=='finished' and product_id in finished_components):
+        direct_mamul = product_id in direct_products and product.kind in ('', 'finished')
+        if product.kind!='semi' and not direct_mamul and not (product.kind=='finished' and product_id in finished_components):
             result['skipped'].append(f'{product.code}: kartın türü yarı mamul değil; değiştirilmedi.')
             continue
         if len(methods)!=1:

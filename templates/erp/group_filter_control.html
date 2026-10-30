@@ -1,0 +1,9 @@
+<div class="filter-field">
+  <label for="category">Ürün grubu</label>
+  <select id="category" name="category" {% if not can_filter_groups %}disabled{% endif %}>
+    <option value="">Tüm ürün grupları</option>
+    {% for group in groups %}<option value="{{ group }}" {% if category == group %}selected{% endif %}>{{ group }}</option>{% endfor %}
+    <option value="__none__" {% if category == '__none__' %}selected{% endif %}>Grubu belirtilmeyenler</option>
+  </select>
+  {% if not can_filter_groups %}<small>Gruba göre filtrelemek için ilişkili kayıtları görüntüleme izni gerekir.</small>{% endif %}
+</div>

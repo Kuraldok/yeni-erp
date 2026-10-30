@@ -12,7 +12,7 @@ from openpyxl import load_workbook
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from .models import Product, CatalogImport, MaterialRecipe, MaterialRequirement
-from .routing import accepts_finished_components, normalized
+from .routing import accepts_finished_components, is_codeless_grill_material, normalized
 
 HEADERS = {
     'parent_code':'Üst Ürün Kodu', 'parent_name':'Üst Ürün Adı',
@@ -75,7 +75,8 @@ def read_catalog(content):
                 },issues=[])
                 for field,label in HEADERS.items():
                     if field_values[field] is None or text(field_values[field])=='':
-                        record['issues'].append(f'{label} boş.')
+                        if field != 'component_code' or not is_codeless_grill_material(record['component_kind'], sheet.title, record['component_code']):
+                            record['issues'].append(f'{label} boş.')
                 if record['component_kind'] and not component_card_kind(record['component_kind'], sheet.title):
                     record['issues'].append('Bileşen türü tanınmıyor; kaynak değer korundu.')
                 if record['unit'] and record['unit'] not in UNITS:
