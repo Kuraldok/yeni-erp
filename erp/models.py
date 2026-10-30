@@ -100,6 +100,13 @@ class Order(models.Model):
             raise ValidationError({'partner':'Sipariş türüne uygun müşteri veya tedarikçi seçin.'})
         if self.status in ('approved','completed') and (not self.pk or not self.lines.exists()):
             raise ValidationError({'status':'Önce taslak siparişi kaydedip en az bir kalem ekleyin.'})
+        if self.pk and self.kind in ('sale','purchase'):
+            previous_kind = type(self).objects.filter(pk=self.pk).values_list('kind',flat=True).first()
+            if previous_kind != self.kind or self.status in ('approved','completed'):
+                from .orders import order_products
+                if self.lines.exclude(product__in=order_products(self.kind)).exists():
+                    field = 'kind' if previous_kind != self.kind else 'status'
+                    raise ValidationError({field:'Sipariş kalemleri bu türe uygun değil. Satışta yalnızca ana ürün, satın almada yalnızca hammadde kullanılabilir.'})
     @property
     def total(self): return sum((line.total for line in self.lines.all()), Decimal(0))
 
@@ -118,6 +125,14 @@ class OrderLine(models.Model):
             raise ValidationError('Onaylı siparişin kalemi başka siparişe taşınamaz veya değiştirilemez.')
         if self.order_id and self.order.status != 'draft':
             raise ValidationError('Kalemler yalnızca taslak siparişlerde değiştirilebilir.')
+        try:
+            order = self.order
+        except Order.DoesNotExist:
+            order = None
+        if order is not None and order.kind in ('sale','purchase') and self.product_id:
+            from .orders import order_products
+            if not order_products(order.kind).filter(pk=self.product_id).exists():
+                raise ValidationError({'product':'Satış siparişinde yalnızca ana ürün, satın alma siparişinde yalnızca hammadde seçilebilir.'})
     @property
     def total(self): return (self.quantity * self.unit_price).quantize(Decimal('0.01'))
     def __str__(self): return f'{self.order.number} · {self.product.code}'

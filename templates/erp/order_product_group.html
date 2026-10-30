@@ -1,0 +1,9 @@
+<div class="field order-product-group">
+  <label for="order-product-group">Ürün grubu</label>
+  <select id="order-product-group" name="product_group">
+    <option value="">Tüm ürün grupları</option>
+    {% for group in selection.groups %}<option value="{{ group }}" {% if product_group == group %}selected{% endif %}>{{ group }}</option>{% endfor %}
+    <option value="__none__" {% if product_group == '__none__' %}selected{% endif %}>Grubu belirtilmeyenler</option>
+  </select>
+  <small>Grup seçimi ürün listesini daraltır; seçilmiş satırlar korunur.</small>
+</div>

@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Sipariş kalemi · Kural Döküm{% endblock %}
+{% block content %}
+<a class="back" href="{% url 'listing' slug %}">← Sipariş kalemleri</a>
+<div class="page-heading"><div><p class="eyebrow">SİPARİŞ KALEMLERİ</p><h1>{% if editing %}Kalemi düzenle{% else %}Yeni sipariş kalemi{% endif %}</h1><p class="muted">Ürün seçenekleri seçtiğiniz taslak siparişin türüne göre belirlenir.</p></div></div>
+<section class="panel form-panel">
+  <form method="post" data-order-editor data-mode="line" data-options-url="{% url 'order_product_options' %}">
+    {% csrf_token %}{{ form.non_field_errors }}
+    {% for field in form %}
+      {% if field.name == 'product' %}{% include 'erp/order_product_group.html' %}<p data-selection-status role="status" aria-live="polite"></p>{% endif %}
+      <div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} *{% endif %}</label>{{ field }}{{ field.errors }}{% if field.name == 'product' %}<small data-product-unit></small>{% endif %}</div>
+    {% endfor %}
+    <div class="form-actions"><button class="button" type="submit" data-save-order>Kaydet</button><button class="text-button" type="submit" name="refresh_products" value="1" formnovalidate>Seçimi güncelle</button><a href="{% url 'listing' slug %}">Vazgeç</a></div>
+  </form>
+</section>
+{{ selection|json_script:'order-selection-data' }}<script src="{% static 'order-entry.js' %}" defer></script>
+{% endblock %}

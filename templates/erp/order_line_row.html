@@ -1,0 +1,6 @@
+<tr class="order-line-row">
+  <td>{% for hidden in line.hidden_fields %}{{ hidden }}{{ hidden.errors }}{% endfor %}{{ line.non_field_errors }}{{ line.product }}{{ line.product.errors }}<small data-product-unit>{% if line.instance.product_id %}{{ line.instance.product.get_unit_display|default:'Birim belirtilmedi' }}{% endif %}</small></td>
+  <td>{{ line.quantity }}{{ line.quantity.errors }}</td>
+  <td>{{ line.unit_price }}{{ line.unit_price.errors }}</td>
+  <td>{% if not line.instance.pk %}<button class="text-button" type="button" data-remove-line>Satırı kaldır</button>{% else %}<span class="muted">Kayıtlı kalem</span>{% endif %}</td>
+</tr>

@@ -9,7 +9,7 @@ from django.forms import modelform_factory
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import Http404
 from django.urls import reverse
-from .models import Product, Partner, Order, StockMovement, ProductionJob, ProductionRoute, MaterialRecipe, MaterialRequirement, stock_balance
+from .models import Product, Partner, Order, OrderLine, StockMovement, ProductionJob, ProductionRoute, MaterialRecipe, MaterialRequirement, stock_balance
 from .registry import MODULES, READ_ONLY_MODELS
 from .products import main_products, order_product_cards
 from .group_filters import available_groups, can_filter_groups, filter_by_group
@@ -59,6 +59,16 @@ def listing(request, slug):
         qs = main_products()
         qs = qs.prefetch_related('materialrecipe_set')
     qs = filter_by_group(qs, category, request.user)
+    order_filter = ''
+    selected_order = None
+    if model is OrderLine and request.GET.get('order'):
+        if not request.user.has_perm('erp.view_order'):
+            raise PermissionDenied
+        from .orders import selection_pk
+        order_id = selection_pk(request.GET['order'])
+        qs = qs.filter(order_id=order_id) if order_id is not None else qs.none()
+        order_filter = str(order_id) if order_id is not None else request.GET['order'][:19]
+        selected_order = Order.objects.filter(pk=order_id).first() if order_id is not None else None
     search = request.GET.get('q','').strip()
     if search:
         condition = Q()
@@ -100,8 +110,10 @@ def listing(request, slug):
         detail_names={'urunler':'product_detail','rotalar':'route_detail','receteler':'recipe_detail','excel-aktarimlari':'catalog_report','uretim-akislari':'flow_detail','uretim-isleri':'production_job'}
         detail=reverse(detail_names[slug],args=[obj.pk]) if slug in detail_names else ''
         editable=model is not ProductionJob or obj.state=='draft'
+        if model is OrderLine:
+            editable=obj.order.status=='draft'
         rows.append({'pk':obj.pk, 'values':values,'detail':detail,'editable':editable,'product_detail':detail if model is Product else ''})
-    return render(request,'erp/list.html', {'title':title,'slug':slug,'has_detail':slug in ['urunler','rotalar','receteler','excel-aktarimlari','uretim-akislari','uretim-isleri'],'headers':headers,'rows':rows,'page':page,'q':search,'groups':groups,'category':category,'can_filter_groups':can_filter,'can_add':model not in READ_ONLY_MODELS and permitted(request.user,'add',model),'can_edit':model not in READ_ONLY_MODELS and model is not StockMovement and permitted(request.user,'change',model)})
+    return render(request,'erp/list.html', {'title':title,'slug':slug,'has_detail':slug in ['urunler','rotalar','receteler','excel-aktarimlari','uretim-akislari','uretim-isleri'],'headers':headers,'rows':rows,'page':page,'q':search,'groups':groups,'category':category,'can_filter_groups':can_filter,'order_filter':order_filter,'selected_order':selected_order,'can_add':model not in READ_ONLY_MODELS and permitted(request.user,'add',model),'can_edit':model not in READ_ONLY_MODELS and model is not StockMovement and permitted(request.user,'change',model)})
 
 
 @login_required
@@ -156,6 +168,12 @@ def product_detail(request, pk):
 @transaction.atomic
 def edit(request, slug, pk=None):
     model, title, _ = module(slug)
+    if model is Order:
+        from .order_views import edit_order
+        return edit_order(request, pk)
+    if model is OrderLine:
+        from .order_views import edit_order_line
+        return edit_order_line(request, pk)
     if model in READ_ONLY_MODELS: raise PermissionDenied
     if model is StockMovement and pk is not None: raise PermissionDenied
     action = 'change' if pk is not None else 'add'

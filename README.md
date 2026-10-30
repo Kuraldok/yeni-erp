@@ -26,7 +26,7 @@ bash scripts/start.sh
 - **Depolar:** En az bir depo oluşturun.
 - **Stok hareketleri:** Ürün, depo ve miktar seçerek açılış stoğunu `Giriş` olarak kaydedin. `Çıkış` mevcut stoktan büyük olamaz. Açıklamaya belge veya düzeltme nedenini yazın. Hareketler silinmez ve değiştirilmez; düzeltme için ters yönde yeni hareket girilir.
 - **Müşteri ve tedarikçiler:** Satış için müşteri; satın alma için tedarikçi tanımlayın. Aynı cari iki türü de destekleyebilir.
-- **Siparişler:** Önce `Taslak` sipariş açın. Sonra **Sipariş kalemleri** ekranında ürün, miktar ve fiyat ekleyin. Ardından siparişi onaylayabilirsiniz. Onaylı siparişin kalemlerini değiştirmek için önce siparişi taslağa alın. Toplamlar KDV hariçtir ve siparişin para birimiyle hesaplanır. Sipariş durumu stokları otomatik değiştirmez.
+- **Siparişler:** **Yeni Sipariş** ekranında sipariş bilgilerini ve birden fazla ürün/miktar/fiyat satırını birlikte girin. Satışta yalnızca ana ürünler, satın almada yalnızca hammaddeler seçilir. Sipariş kalemleri aynı anda taslak siparişe kaydedilir; **Sipariş kalemleri** ekranından da eklenip düzenlenebilir. Ardından siparişi onaylayabilirsiniz. Onaylı siparişin kalemlerini değiştirmek için önce siparişi taslağa alıp kaydedin. Toplamlar KDV hariçtir ve siparişin para birimiyle hesaplanır. Sipariş durumu stokları otomatik değiştirmez.
 - **Üretim rotaları:** Ürünü ve rota sürümünü belirleyin. **Rota adımları** ekranında sıra, operasyon, iş istasyonu, süre ve talimat girin. Aynı rotada sıra numarası tekrarlanamaz.
 - **Kullanıcı ve yetki yönetimi:** Yönetim ekranında kullanıcı oluşturup bir gruba ekleyin. Yeni kullanıcı, rol atanmadıkça işletme kayıtlarını göremez. `Etkin` seçeneğini kaldırmak hesabı kapatır. Sıradan kullanıcılara `Personel durumu` veya `Süper kullanıcı` yetkisi vermeyin.
 
@@ -99,3 +99,15 @@ Ana ürün görünümü mevcut üst ürün ilişkilerinden belirlenir; yarı mam
 Şömineler, Posta kutusu, Soba, Sandalye, Kapak, Bariyer, Ferforje korkuluk, Masa ve masa ayakları ile Döküm saksı bileşenleri döküme; Ahşap saksı bileşenleri ahşaba bağlanır. Mangalda **Ahşap saplı kulp** ve **Tel ızgara sapı** ahşap, diğer adı belli yarı mamuller döküm üretimidir. Bu yeni kategorilerde reçete bileşeni olarak **Mamul** yazılan satırlar da yarı mamul gibi rota alır; özgün Excel değerleri ve mevcut kart türleri korunur. Hammaddeler ve parçalar bu kuralla sınıflandırılmaz. Ayrıntılar ve eksik/çelişkili kayıtların davranışı [kategori kuralları bölümünde](docs/uretim-ve-excel.md#diğer-kategorilerin-üretim-rotaları) açıklanır.
 
 **Izgara / Izgaralar** ürünleri tek mamuldür; döküm rotası doğrudan ana ürün kartına bağlanır. Yarı mamul veya bileşen kodu oluşturulmaz. Bu gruptaki kodsuz hammadde satırlarının ihtiyaçları kaynak miktar ve birim üzerinden hesaplanır; mevcut miktar/birim ve döküm hammaddesi kontrolleri geçerlidir. Ürün ayrıntısında doğrudan üretim rotası ve ayrı hammadde bölümü gösterilir. Bu kayıtlar da stokları otomatik değiştirmez.
+
+## Sipariş ve kalemleri birlikte girme
+
+1. **Siparişler → Yeni Sipariş** yolunu açın. Numarayı, türü, uygun müşteri/tedarikçiyi, tarihi ve para birimini girin.
+2. **Satış** seçildiğinde **Ürün Kartları** listesindeki ana ürünler görünür; hammadde, yarı mamul, parça veya yalnızca başka ürünün bileşeni olan Mamul kartları seçilemez. **Satın alma** seçildiğinde yalnızca Hammadde türündeki kartlar görünür.
+3. **Sipariş kalemleri** bölümünde ürün, pozitif adet/miktar ve negatif olmayan KDV hariç birim fiyat girin. Miktar kartın gösterilen birimine göredir; birimi boş kartta değer tahmin edilmez. **+ Ürün ekle** ile birden fazla satır açabilirsiniz. **Satırı kaldır** yalnızca henüz kaydedilmemiş satırı formdan çıkarır.
+4. **Ürün grubu** seçimi yeni ürün seçeneklerini daraltır. Önceden seçilmiş uygun ürünler korunur; aynı siparişe farklı gruplardan ürün eklenebilir. Tür değiştiğinde uyumsuz ürünler yeniden seçilmelidir. Tarayıcı betiği çalışmıyorsa **Seçimi güncelle** düğmesi bilgileri kaydetmeden seçenekleri yeniler.
+5. **Kaydet**, sipariş ve geçerli kalemleri tek işlemde kaydeder. Hatalı satır veya kayıt hatası varsa o gönderimin başlığı/kalemleri kısmen kaydedilmez. Önceden kullanılan, önce boş taslak açıp sonra kalem ekleme yöntemi de desteklenir.
+
+Siparişi düzenlerken mevcut kalemler aynı ekranda görünür. **Sipariş kalemleri →** bağlantısı yalnızca o siparişin satırlarını açar; buradaki yeni kayıt düğmesi siparişi önceden seçer. Bir ekrandaki değişiklik diğerinde aynı kayda yansır; ikinci bir kalem kopyası oluşturulmaz. Kalem listesinde sipariş seçimi, ürün grubu ve sayfalama birlikte çalışır.
+
+Başka türe uygun olmayan kalemleri bulunan siparişin türü değiştirilemez. Onaylı siparişin kalemleri salt okunur gösterilir; önce durumu **Taslak** yapıp kaydedin, ardından kalemleri değiştirin. Mevcut kayıtlar otomatik silinmez veya dönüştürülmez. Satır ekleme/değiştirme için ilgili sipariş kalemi izinleri, seçenekler için ürün ve ilişkili sipariş/cari görüntüleme izinleri gerekir.
