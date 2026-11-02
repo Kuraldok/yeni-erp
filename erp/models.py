@@ -9,7 +9,41 @@ from .quantities import is_fractional_count, validate_count
 
 POSITIVE = MinValueValidator(Decimal('0.001'))
 
+class ProductQuerySet(AuditedQuerySet):
+    protected = {'unit', 'kind', 'active', 'production_area', 'supply_method'}
+    def update(self, **kwargs):
+        if not self.protected.intersection(kwargs):
+            return super().update(**kwargs)
+        if any(hasattr(value, 'resolve_expression') for value in kwargs.values()):
+            raise ValidationError('Kart türü/birimi değişikliklerinde açık değerler kullanın.')
+        with transaction.atomic(using=self.db):
+            records = list(self.select_for_update())
+            for record in records:
+                for field, value in kwargs.items():
+                    setattr(record, field, value)
+                record.save(update_fields=set(kwargs))
+            return len(records)
+    def bulk_update(self, objs, fields, batch_size=None):
+        if not self.protected.intersection(fields):
+            return super().bulk_update(objs, fields, batch_size=batch_size)
+        with transaction.atomic(using=self.db):
+            objs = list(objs)
+            for record in objs:
+                record.save(update_fields=fields)
+            return len(objs)
+    def bulk_create(self, objs, **kwargs):
+        objs = list(objs)
+        if not any(record.kind == 'raw' for record in objs):
+            return super().bulk_create(objs, **kwargs)
+        if kwargs.get('ignore_conflicts') or kwargs.get('update_conflicts'):
+            raise ValueError('Kart çelişkileri sessizce geçilemez.')
+        with transaction.atomic(using=self.db):
+            for record in objs:
+                record.save(force_insert=True)
+            return objs
+
 class Product(BusinessModel):
+    objects = ProductQuerySet.as_manager()
     code = models.CharField('Ürün kodu', max_length=100, unique=True)
     name = models.CharField('Ürün adı', max_length=200, blank=True)
     unit = models.CharField('Birim', max_length=12, choices=[('adet','Adet'),('kg','Kilogram'),('m','Metre'),('lt','Litre')], default='adet', blank=True)
@@ -25,6 +59,10 @@ class Product(BusinessModel):
         verbose_name_plural = 'Ürünler'
     def __str__(self): return f'{self.code} · {self.name}'
     def clean(self):
+        from .product_rules import normalize_raw_product, protect_product_change
+        previous = type(self).objects.filter(pk=self.pk).first() if self.pk else None
+        protect_product_change(self, previous)
+        normalize_raw_product(self, previous)
         validate_count(self.minimum_stock, self.unit, 'minimum_stock')
         if self.pk:
             previous = type(self).objects.filter(pk=self.pk).first()
@@ -35,10 +73,19 @@ class Product(BusinessModel):
             if previous and previous.unit and previous.unit != self.unit and OrderLine.objects.filter(product=self).exists():
                 raise ValidationError({'unit':'Sipariş geçmişi bulunan kartın birimi değiştirilemez; ayrı stok kartı açın.'})
     def save(self,*args,**kwargs):
-        previous=type(self).objects.filter(pk=self.pk).first() if self.pk else None
-        if previous and previous.unit and previous.unit!=self.unit and (StockMovement.objects.filter(product=self).exists() or OrderLine.objects.filter(product=self).exists()):
-            raise ValidationError({'unit':'İşlem geçmişi bulunan kartın birimi değiştirilemez.'})
-        return super().save(*args,**kwargs)
+        sync_raw_route = kwargs.pop('sync_raw_route', True)
+        from .product_rules import normalize_raw_product, protect_product_change
+        with transaction.atomic():
+            previous=type(self).objects.select_for_update().filter(pk=self.pk).first() if self.pk else None
+            protect_product_change(self, previous)
+            normalized = normalize_raw_product(self, previous)
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = set(kwargs['update_fields']) | normalized
+            result = super().save(*args,**kwargs)
+            if sync_raw_route and self.kind == 'raw':
+                from .routing import apply_raw_material_routes
+                apply_raw_material_routes(product_ids=[self.pk])
+            return result
 
 class Warehouse(BusinessModel):
     name = models.CharField('Depo adı', max_length=100, unique=True)
@@ -255,8 +302,22 @@ class ProductionRoute(BusinessModel):
         constraints = [models.UniqueConstraint(fields=['product','version'], name='unique_route_version'), models.UniqueConstraint(fields=['product','rule_key'], condition=~Q(rule_key=''), name='unique_managed_product_route')]
     def __str__(self): return f'{self.name} · v{self.version}'
     def clean(self):
+        if self.product_id and self.product.kind=='raw':
+            if self.flow_id or self.supply_method=='manufacture':
+                raise ValidationError({'supply_method':'Hammadde rotası dışarıdan hazır temin olmalıdır; iç üretim akışı seçilemez.'})
+            self.supply_method='purchase'
         if self.supply_method=='purchase' and self.flow_id:
             raise ValidationError({'flow':'Hazır temin rotasında iç üretim akışı seçilemez.'})
+    def save(self,*args,**kwargs):
+        if self.product_id and self.product.kind=='raw' and self.product.supply_method=='purchase':
+            previous=type(self).objects.filter(pk=self.pk).first() if self.pk else None
+            if self.flow_id or self.supply_method=='manufacture':
+                if previous is None or previous.flow_id!=self.flow_id or previous.supply_method!=self.supply_method or (self.active and not previous.active):
+                    raise ValidationError('Hammadde için yeni iç üretim rotası oluşturulamaz veya etkinleştirilemez.')
+            elif not self.supply_method:
+                self.supply_method='purchase'
+                if kwargs.get('update_fields') is not None:kwargs['update_fields']=set(kwargs['update_fields'])|{'supply_method'}
+        return super().save(*args,**kwargs)
 
 class RouteStep(BusinessModel):
     route = models.ForeignKey(ProductionRoute, on_delete=models.PROTECT, related_name='steps', verbose_name='Rota')
@@ -389,6 +450,8 @@ class ProductionJob(BusinessModel):
     def clean(self):
         validate_count(self.quantity, self.unit)
         validate_count(self.actual_quantity, self.unit, 'actual_quantity')
+        if self.product_id and self.product.kind in ('raw', 'part') and self.state == 'draft':
+            raise ValidationError({'product':'Üretim çıktısı mamul veya yarı mamul olmalıdır; hammadde dışarıdan temin edilir.'})
         if self.product_id and not self.product.active:
             raise ValidationError({'product':'Pasif ürünle yeni üretim yapılamaz.'})
         if self.order_line_id:

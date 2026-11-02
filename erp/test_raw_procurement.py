@@ -24,12 +24,20 @@ class RawProcurementTests(TestCase):
         values.update(fields)
         return Product.objects.create(**values)
 
+    def legacy_raw(self, code='RAW', **fields):
+        values = dict(code=code, name='Satın alınan malzeme', kind='raw', unit='kg')
+        values.update(fields)
+        product=Product(**values)
+        Product._base_manager.bulk_create([product])
+        return product
+
     def test_all_raw_cards_are_purchased_without_inventing_production_flows(self):
         for index, category in enumerate(('', 'Sehpalar', 'Izgara', 'Ahşap saksı', 'Tanımsız grup')):
             self.raw(f'R-{index}', category=category)
         untouched = Product.objects.create(code='SEMI', kind='semi')
         result = apply_component_routes()
-        self.assertEqual(result['created'], 5)
+        self.assertEqual(result['created'], 0)
+        self.assertEqual(result['existing'], 5)
         self.assertEqual(result['assignments'], {'purchase': 5})
         self.assertEqual(ProductionFlow.objects.count(), 0)
         self.assertFalse(ProductionRoute.objects.filter(product=untouched).exists())
@@ -57,7 +65,7 @@ class RawProcurementTests(TestCase):
         self.assertEqual(MaterialRequirement.objects.filter(pk=line.pk).values().get(), before)
 
     def test_repeated_setup_preserves_existing_procurement_steps_and_times(self):
-        raw = self.raw()
+        raw = self.legacy_raw()
         custom = ProductionRoute.objects.create(product=raw, name='Özel tedarik', supply_method='purchase')
         step = RouteStep.objects.create(route=custom, sequence=1, name='Tedarikçi kontrolü', workstation='Tedarik', duration_minutes=17)
         for _ in range(2):
@@ -71,7 +79,7 @@ class RawProcurementTests(TestCase):
 
     def test_old_manufacture_routes_are_retained_as_inactive_versions(self):
         ensure_workflows()
-        raw = self.raw(supply_method='manufacture', production_area='wood')
+        raw = self.legacy_raw(supply_method='manufacture', production_area='wood')
         flow = ProductionFlow.objects.get(code='wood')
         old = ProductionRoute.objects.create(product=raw, name='Eski rota', flow=flow, supply_method='manufacture', version=4)
         step = RouteStep.objects.create(route=old, sequence=1, name='Eski işlem', workstation='Atölye', duration_minutes=19)
@@ -92,7 +100,7 @@ class RawProcurementTests(TestCase):
 
     def test_open_jobs_are_reported_and_not_rewritten(self):
         ensure_workflows()
-        raw = self.raw(supply_method='manufacture', production_area='wood')
+        raw = self.legacy_raw(supply_method='manufacture', production_area='wood')
         flow = ProductionFlow.objects.get(code='wood')
         old = ProductionRoute.objects.create(product=raw, name='Açık iş rotası', flow=flow, supply_method='manufacture')
         job = ProductionJob.objects.create(number='RAW-OPEN', product=raw, quantity=1, unit='kg', flow=flow,
@@ -112,7 +120,7 @@ class RawProcurementTests(TestCase):
         self.assertEqual(apply_component_routes()['created'], 1)
 
     def test_import_scope_does_not_modify_unrelated_raw_cards(self):
-        unrelated = self.raw('UNRELATED')
+        unrelated = self.legacy_raw('UNRELATED')
         batch, _ = import_catalog(workbook([('Soba', [[1, 'P', 'Soba', 'R', 'Pik', 'Hammadde', 1, 'KG']])]), 'raw-scope.xlsx')
         self.assertEqual(apply_component_routes(source=batch)['created'], 0)
         unrelated.refresh_from_db()

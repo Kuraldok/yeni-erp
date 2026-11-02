@@ -4,12 +4,14 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import OperationalError, IntegrityError, transaction
-from django.db.models import Q, CharField, TextField
+from django.db.models import Q, CharField, TextField, Case, F, IntegerField, Value, When
 from django.forms import modelform_factory
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import Http404
 from django.urls import reverse
 from django.views.decorators.vary import vary_on_headers
+from django.views.decorators.http import require_POST
+from urllib.parse import urlencode
 from .models import Product, Partner, Order, OrderLine, StockMovement, ProductionJob, ProductionRoute, MaterialRecipe, MaterialRequirement, stock_balance
 from .registry import MODULES, READ_ONLY_MODELS
 from .products import main_products, order_product_cards, manual_stock_products
@@ -34,15 +36,35 @@ def dashboard(request):
             count = filter_by_group(main_products(), category, request.user).count() if model is Product else scoped(model).count()
             stats.append((title, count))
     balances = []
+    critical_count = 0
     if request.user.has_perm('erp.view_stockmovement') and request.user.has_perm('erp.view_product'):
-        for product in scoped(Product).filter(active=True)[:50]:
-            quantity = stock_balance(product)
+        from .stock_queries import stock_products
+        inventory = stock_products(scoped(Product).filter(active=True))
+        low = Q(minimum_stock__isnull=False, stock_quantity__lt=F('minimum_stock'))
+        critical_count = inventory.filter(low).count()
+        inventory = inventory.annotate(stock_priority=Case(When(low, then=Value(0)), default=Value(1), output_field=IntegerField())).order_by('stock_priority', 'code')
+        for product in inventory[:50]:
+            quantity = product.stock_quantity
             balances.append({'product':product, 'quantity':quantity, 'low':product.minimum_stock is not None and quantity < product.minimum_stock})
     recent = scoped(StockMovement).select_related('product','warehouse','created_by')[:8] if request.user.has_perm('erp.view_stockmovement') else []
     from .models import ProductionFlow, CatalogImport
     flows=scoped(ProductionFlow).prefetch_related('steps') if request.user.has_perm('erp.view_productionflow') else []
     catalog=scoped(CatalogImport).first() if request.user.has_perm('erp.view_catalogimport') else None
-    return render(request, 'erp/dashboard.html', {'stats':stats,'balances':balances,'recent':recent,'flows':flows,'catalog':catalog,'groups':available_groups(request.user),'category':category,'can_filter_groups':True})
+    return render(request, 'erp/dashboard.html', {'stats':stats,'balances':balances,'recent':recent,'flows':flows,'catalog':catalog,'groups':available_groups(request.user),'category':category,'can_filter_groups':True,'critical_count':critical_count})
+
+
+@login_required
+def critical_stock(request):
+    if not all(request.user.has_perm('erp.' + code) for code in ('view_product', 'view_stockmovement')):
+        raise PermissionDenied
+    from .stock_queries import stock_products
+    category = request.GET.get('category', '').strip()
+    products = stock_products(filter_by_group(Product.objects.filter(active=True), category, request.user))
+    products = products.filter(minimum_stock__isnull=False, stock_quantity__lt=F('minimum_stock')).order_by('category', 'unit', 'code')
+    page = Paginator(products, 50).get_page(request.GET.get('page'))
+    rows = [{'product': product, 'quantity': product.stock_quantity, 'shortage': product.minimum_stock - product.stock_quantity} for product in page]
+    return render(request, 'erp/critical_stock.html', {'page':page, 'rows':rows, 'category':category,
+        'groups':available_groups(request.user), 'can_filter_groups':True, 'page_query':urlencode({'category':category})})
 
 def module(slug):
     if slug not in MODULES: raise Http404
@@ -297,7 +319,37 @@ def catalog_report(request,pk):
     codes={code for line in selected_rows for code in (line.parent_code,line.component_code)}
     conflicts=[code for code in batch.summary.get('conflict_codes',[]) if not category or code in codes]
     report_stats={'sheets':selected.values('sheet').distinct().count(),'rows':selected.count(),'issues':rows.count()}
-    return render(request,'erp/import_report.html',{'batch':batch,'page':page,'report_stats':report_stats,'blank_fields':blank_fields,'conflict_codes':conflicts,'groups':available_groups(request.user),'category':category,'can_filter_groups':True})
+    from .route_reviews import can_apply_source_routes
+    from django.utils.dateparse import parse_datetime
+    review=batch.summary.get('routing')
+    warnings=review.get('warnings',[]) if review else []
+    if category=='__none__':
+        warnings=[warning for warning in warnings if not warning.get('categories')]
+    elif category:
+        warnings=[warning for warning in warnings if category in warning.get('categories',[])]
+    report_stats['routing_issues']=len(warnings)
+    report_stats['review_count']=report_stats['issues']+len(warnings)
+    return render(request,'erp/import_report.html',{'batch':batch,'page':page,'report_stats':report_stats,'blank_fields':blank_fields,'conflict_codes':conflicts,'groups':available_groups(request.user),'category':category,'can_filter_groups':True,
+        'route_review':review,'route_warnings':warnings,'route_checked_at':parse_datetime(review['checked_at']) if review and review.get('checked_at') else None,'can_apply_routes':can_apply_source_routes(request.user)})
+
+
+@login_required
+@require_POST
+def reapply_source_routes(request,pk):
+    from .route_reviews import apply_source_routes, can_apply_source_routes
+    from .models import CatalogImport
+    if not can_apply_source_routes(request.user):
+        raise PermissionDenied
+    get_object_or_404(CatalogImport,pk=pk)
+    try:
+        result=apply_source_routes(pk,request.user)
+    except (ValidationError,OperationalError,IntegrityError) as exc:
+        messages.error(request,'Rotalar uygulanamadı. ' + (' '.join(exc.messages) if isinstance(exc,ValidationError) else 'Güncel kayıtları kontrol edip tekrar deneyin.'))
+    else:
+        messages.success(request,f"Rotalar değerlendirildi: {result['created']} yeni, {result['existing']} mevcut, {len(result['skipped'])} inceleme.")
+    url=reverse('catalog_report',args=[pk])
+    category=request.POST.get('category','').strip()
+    return redirect(url+('?' + urlencode({'category':category}) if category else ''))
 
 @login_required
 def recipe_detail(request,pk):

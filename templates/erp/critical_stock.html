@@ -1,0 +1,11 @@
+{% extends 'base.html' %}{% load erp_numbers %}
+{% block content %}
+<a href="{% url 'dashboard' %}?category={{ category|urlencode }}">← Ana kontrol paneli</a>
+<div class="page-heading"><div><h1>Kritik stoklar</h1><p class="muted">{{ page.paginator.count }} ürün asgari stok altında</p></div></div>
+{% include 'erp/group_filter_form.html' %}
+<p class="notice">Tüm depolardaki fiziksel stok, ürün kartındaki asgari miktarla karşılaştırılır. Bütün kritik ürünler sayfalanır; farklı ölçü birimlerinin eksikleri tek toplamda birleştirilmez.</p>
+<section class="panel"><div class="table-wrap"><table>
+<thead><tr><th>Ürün kodu</th><th>Ürün</th><th>Ürün grubu</th><th>Mevcut</th><th>Asgari</th><th>Eksik</th><th>Birim</th></tr></thead>
+<tbody>{% for row in rows %}<tr><td><a href="{% url 'stock_card_detail' row.product.pk %}">{{ row.product.code }}</a></td><td>{{ row.product.name|default:'—' }}</td><td>{{ row.product.category|default:'—' }}</td><td>{{ row.quantity|count_amount:row.product.unit }}</td><td>{{ row.product.minimum_stock|count_amount:row.product.unit }}</td><td>{{ row.shortage|count_amount:row.product.unit }}</td><td>{{ row.product.get_unit_display }}</td></tr>{% empty %}<tr><td colspan="7">Bu seçimde kritik stok bulunmuyor.</td></tr>{% endfor %}</tbody>
+</table></div>{% include 'erp/pagination.html' %}</section>
+{% endblock %}

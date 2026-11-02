@@ -142,7 +142,7 @@ Yeni Excel aktarımlarında kurallar otomatik uygulanır. Önceden aktarılmış
 
 ## Hammaddelerin dışarıdan temini ve manuel stok seçimi
 
-Hammadde kartları bütün ürün gruplarında **Dışarıdan hazır temin** yöntemine bağlanır. Yeni rotada tek **Dışarıdan hazır temin** adımı bulunur; ahşap/döküm akışı ve tahmini süre eklenmez. Yeni Excel aktarımı yalnız o kaynağa bağlı hammadde kartlarına bu kuralı uygular. Mevcut veya elle açılmış kartlar için `setup_component_routes` komutunu çalıştırın. Uygun mevcut dış temin rotası ve özel adımları korunur; tekrar çalıştırma yeni rota oluşturmaz.
+Hammadde kartları bütün ürün gruplarında **Dışarıdan hazır temin** yöntemine bağlanır. Yeni rotada tek **Dışarıdan hazır temin** adımı bulunur; ahşap/döküm akışı ve tahmini süre eklenmez. Yeni Excel aktarımı yalnız o kaynağa bağlı hammadde kartlarına bu kuralı uygular. Elle kart oluşturma ve düzenleme sırasında kural otomatik uygulanır. Önceki tanımları değerlendirmek için `setup_component_routes` komutunu çalıştırın. Uygun mevcut dış temin rotası ve özel adımları korunur; tekrar çalıştırma yeni rota oluşturmaz.
 
 Hammadde için etkin bir iç üretim rotası varsa eski rota/adımları silinmeden pasifleştirilir ve dış temin sürümü kullanılır. Tamamlanan işlerin rota bağlantısı ve geçmişi değiştirilmez. Açık bir üretim işiyle çelişen kartta tanım korunur ve komutun `skipped` listesine açıklama eklenir; iş kapatıldıktan sonra komut tekrar çalıştırılır. Kart eşleştirmesi bulunmayan satırlar için stok kartı veya kod oluşturulmaz. Izgara'nın beklenen kodsuz hammadde yapısı korunur.
 
@@ -200,3 +200,14 @@ Satış siparişini açıp **Üretim, teslimat ve kalan miktar takibi** bağlant
 **Üretim ve maliyet raporu** ürün grubu ve tarih aralığıyla parti sonuçlarını, fireyi, reçete/gerçek tüketim farkını ve TL maliyeti gösterir. Ters çevrilmiş partiler net toplama katılmaz. Rapor CSV olarak indirilebilir. **Stok kartları** ayrıntısında depoların miktarı, rezervasyonu, serbest stoğu ve bilinen değeri izlenir.
 
 Bir teslimatın iadesinden veya farklı maliyetli partilerin bir araya gelmesinden sonra üretim ters çevrilirse, özgün maliyet ile güncel stok değerinin farkı **Ters fiş değer farkı** olarak kaydedilir. Fark fiş hareketlerinde ve maliyet raporunda ayrıca görünür.
+
+
+## Güncel inceleme ve taslak düzeltme akışları
+
+**Excel aktarım raporu → Rota incelemesi** bölümünde atlanmış tanımlar, ilgili kart, son kontrol zamanı ve kullanıcı görülür. Ürün grubu filtresi rota uyarılarına da uygulanır. Alan eksikleri ile rota uyarıları ayrı gösterilir ve toplam inceleme sayısına katılır. Açık iş veya çelişki giderildikten sonra yetkili kullanıcı **Rotaları yeniden değerlendir** ile yalnız o aktarımın bağlı kartlarını yeniden kontrol eder. Kaynak satırları, boş değerler ve formüller yeniden yazılmaz.
+
+**Stok belgeleri → Ayrıntılar → Taslağı düzenle** ile başlık ve kalemler güncellenir. **Bu kalemi taslaktan çıkar** seçimi kalemi geçmişte saklar; bu kalem stok hareketi oluşturmaz. En az bir etkin kalem kalmalıdır. Belgeye artık ihtiyaç yoksa **Taslağı iptal et** ile gerekçe girilir; kullanıcı ve zaman kaydedilir. İptal edilmiş belge işlenemez veya tekrar düzenlenemez. İşlenmiş belgelerde mevcut ters fiş akışı kullanılır.
+
+Sayım taslağı düzenlenirken önceki karşılaştırma bakiyesi korunur. Stok arada değiştiyse işleme durur. Yeniden sayım yapıldıktan sonra **Sayımı yeniden yaptım; stok karşılaştırmasını güncelle** seçeneğiyle yeni toplam kaydedilebilir. Eski ve yeni bakiyeler denetim kaydında tutulur. Farklı depo veya ürün seçildiğinde karşılaştırma o yeni konuma göre hazırlanır.
+
+**Kritik stoklar** sayfasında tüm eksikler sayfalanır. Farklı birimler tek toplamda birleştirilmez. **Raporlar** sayfalarında tarih, grup ve depo filtreleri sayfa geçişlerinde korunur; CSV dışa aktarımı sayfa sınırı olmadan filtrelenmiş kayıtları içerir. Üretim ve üretim ters fişleri kendi işlem tarihlerinde hesaba katılır; düzeltme döneminin net üretim/tüketim/maliyet değerleri negatif olabilir.

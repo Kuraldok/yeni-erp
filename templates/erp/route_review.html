@@ -1,0 +1,11 @@
+<section class="panel" data-route-review>
+<h2>Rota incelemesi</h2>
+{% if route_review %}
+<p>Son değerlendirme: {{ route_checked_at|date:'d.m.Y H:i:s' }} · {{ route_review.checked_by }}</p>
+{% if not category %}<p>{{ route_review.created }} yeni rota · {{ route_review.existing }} mevcut rota · {{ report_stats.routing_issues }} rota uyarısı</p>{% endif %}
+{% if route_warnings %}<p class="notice">{{ report_stats.routing_issues }} rota ataması inceleme gerektiriyor. Aşağıdaki nedenler giderildikten sonra rotaları yeniden değerlendirin.</p>
+<ul>{% for warning in route_warnings %}<li>{{ warning.message }}{% if warning.product_id and perms.erp.view_product %} · <a href="{% url 'stock_card_detail' warning.product_id %}">Kartı incele</a>{% endif %}</li>{% endfor %}</ul>
+{% else %}<p>Bu seçimde rota uyarısı bulunmuyor.</p>{% endif %}
+{% else %}<p class="notice">Bu aktarımın kayıtlı rota değerlendirmesi bulunmuyor. Kaynak satırlarını değiştirmeden rotaları değerlendirebilirsiniz.</p>{% endif %}
+{% if can_apply_routes %}<form method="post" action="{% url 'reapply_source_routes' batch.pk %}">{% csrf_token %}<input type="hidden" name="category" value="{{ category }}"><button class="button secondary">Rotaları yeniden değerlendir</button></form>{% endif %}
+</section>

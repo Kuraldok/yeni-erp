@@ -17,7 +17,11 @@ class StockDocument(BusinessModel):
     source_warehouse=models.ForeignKey('erp.Warehouse',on_delete=models.PROTECT,null=True,blank=True,related_name='+',verbose_name='Çıkış / sayım deposu')
     target_warehouse=models.ForeignKey('erp.Warehouse',on_delete=models.PROTECT,null=True,blank=True,related_name='+',verbose_name='Giriş deposu')
     date=models.DateField('Belge tarihi',default=timezone.localdate)
-    status=models.CharField('Durum',max_length=12,default='draft',choices=[('draft','Taslak'),('posted','İşlendi')],editable=False)
+    status=models.CharField('Durum',max_length=12,default='draft',choices=[('draft','Taslak'),('posted','İşlendi'),('cancelled','İptal edildi')],editable=False)
+    revision=models.PositiveIntegerField(default=0,editable=False)
+    cancelled_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,editable=False,related_name='+',verbose_name='İptal eden')
+    cancelled_at=models.DateTimeField(null=True,blank=True,editable=False,verbose_name='İptal tarihi')
+    cancellation_reason=models.TextField(blank=True,editable=False,verbose_name='İptal nedeni')
     reason=models.TextField('Açıklama / gerekçe',blank=True)
     reverses=models.OneToOneField('self',on_delete=models.PROTECT,null=True,blank=True,related_name='reversal_document',editable=False)
     production_posting=models.OneToOneField('erp.ProductionPosting',on_delete=models.PROTECT,null=True,blank=True,related_name='reversal',editable=False)
@@ -29,13 +33,13 @@ class StockDocument(BusinessModel):
         ordering=['-pk']
         verbose_name='Stok belgesi'
         verbose_name_plural='Stok belgeleri'
-        permissions=[('post_stockdocument','Stok belgesini işleyebilir'),('reverse_stockdocument','İşlenmiş stok / üretim fişini ters çevirebilir')]
+        permissions=[('post_stockdocument','Stok belgesini işleyebilir'),('reverse_stockdocument','İşlenmiş stok / üretim fişini ters çevirebilir'),('cancel_stockdocument','Taslak stok belgesini gerekçeyle iptal edebilir')]
     def __str__(self):return f'{self.number} · {self.get_kind_display()}'
     @property
     def is_reversed(self):return StockDocument.objects.filter(reverses=self,status='posted').exists()
     def save(self,*args,**kwargs):
-        if self.pk and type(self).objects.filter(pk=self.pk,status='posted').exists():
-            raise ValidationError('İşlenmiş fiş değiştirilemez; ters fiş oluşturun.')
+        if self.pk and type(self).objects.filter(pk=self.pk,status__in=['posted','cancelled']).exists():
+            raise ValidationError('İşlenmiş veya iptal edilmiş fiş değiştirilemez; işlenmiş fiş için ters fiş oluşturun.')
         return super().save(*args,**kwargs)
     def delete(self,*args,**kwargs):
         raise ValidationError('Stok belgesi silinemez.')
@@ -49,6 +53,7 @@ class StockDocumentLine(BusinessModel):
     unit=models.CharField('Birim',max_length=12,blank=True,editable=False)
     unit_cost=models.DecimalField('Birim maliyet (TL)',max_digits=32,decimal_places=8,null=True,blank=True,validators=[MinValueValidator(0)])
     baseline_quantity=models.DecimalField('Sayım öncesi stok',max_digits=24,decimal_places=12,null=True,editable=False)
+    active=models.BooleanField('Taslakta etkin',default=True,editable=False)
     class Meta:
         ordering=['pk']
         verbose_name='Stok belgesi kalemi'
@@ -58,12 +63,19 @@ class StockDocumentLine(BusinessModel):
         validate_count(self.quantity,self.product.unit if self.product_id else self.unit)
         if self.document_id and self.document.status!='draft':raise ValidationError('İşlenmiş fişin kalemi değiştirilemez.')
     def save(self,*args,**kwargs):
-        if self.document.status!='draft':raise ValidationError('İşlenmiş fişin kalemi değiştirilemez.')
-        self.unit=self.product.unit
-        if self._state.adding and self.document.kind=='count':
-            from .models import stock_balance
-            self.baseline_quantity=stock_balance(self.product,self.document.source_warehouse_id)
-        return super().save(*args,**kwargs)
+        from django.db import transaction
+        with transaction.atomic():
+            self.document=StockDocument.objects.select_for_update().get(pk=self.document_id)
+            if self.document.status!='draft':raise ValidationError('İşlenmiş veya iptal edilmiş fişin kalemi değiştirilemez.')
+            previous=type(self).objects.filter(pk=self.pk).first() if self.pk else None
+            if previous and previous.document_id!=self.document_id:
+                raise ValidationError('Fiş kalemi başka belgeye taşınamaz.')
+            if not previous or previous.product_id!=self.product_id:
+                self.unit=self.product.unit
+            if self._state.adding and self.document.kind=='count' and self.baseline_quantity is None:
+                from .models import stock_balance
+                self.baseline_quantity=stock_balance(self.product,self.document.source_warehouse_id)
+            return super().save(*args,**kwargs)
     def delete(self,*args,**kwargs):
         raise ValidationError('Fiş kalemleri silinmez; taslak fişi yeniden hazırlayın.')
 

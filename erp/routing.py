@@ -14,6 +14,19 @@ RULE_KEY = 'fountain-bench-v1'
 RAW_RULE_KEY = 'raw-material-purchase-v1'
 
 
+def add_route_warning(result, message, *, line=None, product=None):
+    categories = {line.sheet} if line and line.sheet else set()
+    if product:
+        if product.category:
+            categories.add(product.category)
+        categories.update(MaterialRequirement.objects.filter(component=product).exclude(sheet='').values_list('sheet', flat=True))
+    result['skipped'].append(message)
+    result.setdefault('warnings', []).append({'message': message, 'categories': sorted(categories),
+        'product_id': product.pk if product else line.component_id if line else None,
+        'code': product.code if product else line.component_code if line else '',
+        'sheet': line.sheet if line else '', 'row': line.row_number if line else None})
+
+
 def normalized(value):
     return ' '.join(unicodedata.normalize('NFC', value or '').casefold().replace('i\u0307', 'i').replace('ı', 'i').split())
 
@@ -121,18 +134,19 @@ def apply_component_routes(source=None):
     for product_id in direct_products:
         plans[product_id].add('casting')
     finished_components = set()
-    missing = []
+    warning_result = {'skipped': [], 'warnings': []}
+    missing = warning_result['skipped']
     for line in lines:
         category = normalized(line.sheet)
         if is_semifinished_component(line.component_kind, line.sheet) and not normalized(line.component_name) and category in {'banklar', 'park bahçe banki'} | MANGAL_CATEGORIES | SEHPA_CATEGORIES:
             if source is None or line.source_id==source.pk:
-                missing.append(f'{line.sheet}:{line.row_number}: bileşen adı boş; üretim/temin yolu atanmadı.')
+                add_route_warning(warning_result, f'{line.sheet}:{line.row_number}: bileşen adı boş; üretim/temin yolu atanmadı.', line=line)
             continue
         method = component_method(line)
         if not method or (affected is not None and line.component_id not in affected):
             continue
         if not line.component_id:
-            missing.append(f'{line.sheet}:{line.row_number}: bileşen kartı eşleştirilmemiş.')
+            add_route_warning(warning_result, f'{line.sheet}:{line.row_number}: bileşen kartı eşleştirilmemiş.', line=line)
             continue
         plans[line.component_id].add(method)
         if accepts_finished_components(line.sheet):
@@ -140,27 +154,31 @@ def apply_component_routes(source=None):
     if any(methods & {'wood', 'casting'} for methods in plans.values()):
         ensure_workflows()
     flows = {flow.code: flow for flow in ProductionFlow.objects.filter(code__in=['wood','casting'])}
-    result = {'created': 0, 'existing': 0, 'assignments': {}, 'skipped': missing}
+    result = {'created': 0, 'existing': 0, 'assignments': {}, 'skipped': missing, 'warnings': warning_result['warnings']}
     counts = Counter()
     for product_id, methods in sorted(plans.items()):
         product = Product.objects.select_for_update().get(pk=product_id)
         direct_mamul = product_id in direct_products and product.kind in ('', 'finished')
         if product.kind!='semi' and not direct_mamul and not (product.kind=='finished' and product_id in finished_components):
-            result['skipped'].append(f'{product.code}: kartın türü yarı mamul değil; değiştirilmedi.')
+            add_route_warning(result, f'{product.code}: kartın türü yarı mamul değil; değiştirilmedi.', product=product)
             continue
         if len(methods)!=1:
-            result['skipped'].append(f'{product.code}: kategoriler arasında farklı rota kuralları var; değiştirilmedi.')
+            add_route_warning(result, f'{product.code}: kategoriler arasında farklı rota kuralları var; değiştirilmedi.', product=product)
             continue
         method = next(iter(methods))
         supply = 'purchase' if method=='purchase' else 'manufacture'
         area = '' if method=='purchase' else method
         if (product.supply_method and product.supply_method!=supply) or (product.production_area and product.production_area!=area):
-            result['skipped'].append(f'{product.code}: mevcut üretim/temin tanımı kuraldan farklı; değiştirilmedi.')
+            add_route_warning(result, f'{product.code}: mevcut üretim/temin tanımı kuraldan farklı; değiştirilmedi.', product=product)
+            continue
+        from .product_rules import has_open_work
+        if (not product.supply_method or (area and not product.production_area)) and has_open_work(product.pk):
+            add_route_warning(result, f'{product.code}: açık üretim işi var; mevcut üretim/temin tanımı korundu.', product=product)
             continue
         route = ProductionRoute.objects.filter(product=product,rule_key=RULE_KEY).first()
         if route:
             if route.supply_method!=supply or (route.flow.code if route.flow_id else 'purchase')!=method:
-                result['skipped'].append(f'{product.code}: mevcut rota tanımı korunarak incelemeye bırakıldı.')
+                add_route_warning(result, f'{product.code}: mevcut rota tanımı korunarak incelemeye bırakıldı.', product=product)
                 continue
             result['existing'] += 1
         else:
@@ -194,33 +212,38 @@ def apply_component_routes(source=None):
     result['created'] += raw_result['created']
     result['existing'] += raw_result['existing']
     result['skipped'].extend(raw_result['skipped'])
+    result['warnings'].extend(raw_result['warnings'])
     counts.update(raw_result['assignments'])
     result['assignments'] = dict(counts)
     return result
 
 
 @transaction.atomic
-def apply_raw_material_routes(source=None):
+def apply_raw_material_routes(source=None, product_ids=None):
     """Procure raw cards without rewriting historical routes or open jobs."""
-    from .models import ProductionJob
+    from .product_rules import has_open_work
     products = Product.objects.filter(kind='raw')
+    if product_ids is not None:
+        products = products.filter(pk__in=product_ids)
     lines = MaterialRequirement.objects.all()
+    if product_ids is not None:
+        lines = lines.filter(component_id__in=product_ids)
     if source is not None:
         lines = lines.filter(source=source)
         referenced = set(lines.values_list('component_id', flat=True))
         referenced.update(MaterialRecipe.objects.filter(source=source).values_list('product_id', flat=True))
         products = products.filter(pk__in=referenced)
-    result = {'created': 0, 'existing': 0, 'assignments': {}, 'skipped': []}
+    result = {'created': 0, 'existing': 0, 'assignments': {}, 'skipped': [], 'warnings': []}
     for line in lines.filter(component__isnull=True):
         if normalized(line.component_kind) == 'hammadde' and not is_codeless_grill_material(line.component_kind, line.sheet, line.component_code):
-            result['skipped'].append(f'{line.sheet}:{line.row_number}: hammadde kartı eşleştirilmemiş; temin rotası atanmadı.')
+            add_route_warning(result, f'{line.sheet}:{line.row_number}: hammadde kartı eşleştirilmemiş; temin rotası atanmadı.', line=line)
     assigned = 0
     for product in products.select_for_update().order_by('pk'):
         routes = list(product.productionroute_set.order_by('-version', '-pk'))
         incompatible = [r for r in routes if r.active and (r.supply_method != 'purchase' or r.flow_id)]
         needs_change = product.supply_method != 'purchase' or bool(product.production_area) or bool(incompatible)
-        if needs_change and ProductionJob.objects.filter(product=product, state__in=['draft', 'running']).exists():
-            result['skipped'].append(f'{product.code}: açık üretim işi var; mevcut tanım korundu. İş kapatıldıktan sonra temin rotasını tekrar uygulayın.')
+        if needs_change and has_open_work(product.pk):
+            add_route_warning(result, f'{product.code}: açık üretim işi var; mevcut tanım korundu. İş kapatıldıktan sonra temin rotasını tekrar uygulayın.', product=product)
             continue
         route = next((r for r in routes if r.active and r.supply_method == 'purchase' and not r.flow_id), None)
         if route is None:
@@ -246,7 +269,7 @@ def apply_raw_material_routes(source=None):
             product.production_area = ''
             updates.append('production_area')
         if updates:
-            product.save(update_fields=updates)
+            product.save(update_fields=updates, sync_raw_route=False)
         assigned += 1
     if assigned:
         result['assignments']['purchase'] = assigned

@@ -98,7 +98,7 @@ Ana ürün görünümü mevcut üst ürün ilişkilerinden belirlenir; yarı mam
 
 Şömineler, Posta kutusu, Soba, Sandalye, Kapak, Bariyer, Ferforje korkuluk, Masa ve masa ayakları ile Döküm saksı bileşenleri döküme; Ahşap saksı bileşenleri ahşaba bağlanır. Mangalda **Ahşap saplı kulp** ve **Tel ızgara sapı** ahşap, diğer adı belli yarı mamuller döküm üretimidir. Bu yeni kategorilerde reçete bileşeni olarak **Mamul** yazılan satırlar da yarı mamul gibi rota alır; özgün Excel değerleri ve mevcut kart türleri korunur. Hammaddeler ve parçalar bu kuralla sınıflandırılmaz. Ayrıntılar ve eksik/çelişkili kayıtların davranışı [kategori kuralları bölümünde](docs/uretim-ve-excel.md#diğer-kategorilerin-üretim-rotaları) açıklanır.
 
-**Hammaddeler** ürün grubundan bağımsız olarak dışarıdan hazır temin edilir. Kartı eşleşmiş hammaddelere iç üretim akışı olmayan bir temin rotası atanır. Yeni Excel aktarımlarında otomatik uygulanır; mevcut veya elle açılmış hammadde kartları için `setup_component_routes` çalıştırılır. Açık üretim işi bulunan çelişkili tanımlar raporlanır ve iş kapanana kadar korunur. Önceki iç üretim rotaları adımlarıyla birlikte saklanır; uygun kartlarda yeni temin sürümü etkinleştirilir.
+**Hammaddeler** ürün grubundan bağımsız olarak dışarıdan hazır temin edilir. Kartı eşleşmiş hammaddelere iç üretim akışı olmayan bir temin rotası atanır. Yeni Excel aktarımlarında, elle kart oluşturmada ve kart düzenlemede otomatik uygulanır; önceki tanımlar için `setup_component_routes` çalıştırılır. Açık üretim işi bulunan çelişkili tanımlar raporlanır ve iş kapanana kadar korunur. Önceki iç üretim rotaları adımlarıyla birlikte saklanır; uygun kartlarda yeni temin sürümü etkinleştirilir.
 
 **Stok hareketleri → Yeni kayıt** ekranında yarı mamuller manuel seçilemez. Belirtilen kategori kurallarında kaynakta Mamul yazan yarı mamul bileşenleri de bu seçime dahil edilmez; kart ve kaynak türleri değiştirilmez. Hammadde, ana ürün ve parça seçimleri devam eder. Üretim fişlerinin oluşturduğu otomatik yarı mamul giriş/tüketimleri ve önceki stok hareketleri korunur.
 
@@ -150,3 +150,13 @@ Depo sorumlusu fiş hazırlayıp işleyebilir; sipariş sorumlusu mamul ayırıp
 Geçiş `0006`–`0011` migration'larıyla yapılır. Önceki iş durumları, miktarlar ve kaynak Excel satırları korunur. Eski sipariş kalemlerine geçiş anındaki kart bilgileri kopyalanır; bilinmeyen eski fiyatlar, teslimatlar, rezervasyonlar veya kullanıcılar üretilmez. Eski tamamlanmış siparişlerin durumu korunur; teslim/kabul raporu yalnız kaydedilmiş fişleri gösterir. Yedek alın, `migrate` ve `setup_roles` çalıştırın. Bu çalışma geliştirme ortamında yapılmıştır.
 
 Ters çıkışta özgün fişin maliyeti güncel stok ortalamasından farklıysa **Ters fiş değer farkı** ayrıca saklanır; stok değerinden sessizce düşmez veya negatif değer bırakmaz. Stok ve üretim raporları bu düzeltmeyi ayrı TL sütununda gösterir.
+
+
+## Kart korumaları, dönem raporları ve taslak yönetimi
+
+- Açık işin çıktı ve girdi kartlarında birim, tür, etkinlik ve üretim/temin tanımları korunur. İşlem geçmişi bulunan kartların türü/birimi değiştirilmez; yeni kart açılır. Hammadde dış temin kuralı kart kaydında ve kontrollü toplu işlemlerde de uygulanır.
+- Üretim raporu üretimi kendi tarihinde pozitif, ters fişi düzeltme tarihinde negatif gösterir. Örneğin 1 Kasım üretiminin 2 Kasım'da ters çevrilmesi 1 Kasım raporunu değiştirmez. Maliyet ve tüketim karşılaştırması aynı dönem işaretleriyle hesaplanır.
+- Excel aktarım raporunda **Rota incelemesi** bölümü, son değerlendirmeyi ve neden atanamayan kartları gösterir. Yetkili kullanıcı kaynak hücrelerini değiştirmeden **Rotaları yeniden değerlendir** düğmesini kullanabilir.
+- Ana panel kritik stokları önce gösterir. **Kritik stoklar** ekranı bütün asgari stok altı kartları grup filtresiyle sayfalar; eşik, tüm depoların fiziksel toplamına uygulanır.
+- **Stok belgeleri → Ayrıntılar** ekranında taslak düzenlenebilir veya gerekçeyle iptal edilebilir. Çıkarılan kalemler silinmez ve işlenmez; iptal eden ve zamanı kaydedilir. Güncelliğini kaybetmiş düzenleme/iptal/işleme istekleri reddedilir. İşlenmiş belgeye düzeltme ters fişle yapılır.
+- Rapor ekranları 50 kayıtla sayfalanır; **CSV indir** bütün filtrelenmiş kayıtları içerir. Stok kartının depo hesapları ve raporlar toplu sorgularla hazırlanır.

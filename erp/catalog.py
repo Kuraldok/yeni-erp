@@ -156,7 +156,7 @@ def import_catalog(content, filename, actor=None):
             else:
                 product=Product(code=code,minimum_stock=None,**attrs)
                 product.full_clean()
-                product.save()
+                product.save(sync_raw_route=False)
                 new_products+=1
             products[code]=product
         recipes={}
@@ -191,6 +191,7 @@ def import_catalog(content, filename, actor=None):
             'types':dict(Counter(r['component_kind'] for r in rows)),
         }
         batch.save(update_fields=['summary'])
-        from .routing import apply_component_routes
-        apply_component_routes(source=batch)
+        from .route_reviews import apply_source_routes
+        apply_source_routes(batch.pk, actor)
+        batch.refresh_from_db(fields=['summary'])
     return batch,True

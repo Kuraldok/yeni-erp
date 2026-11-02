@@ -178,6 +178,7 @@ def document_number(prefix='STK'):return f'{prefix}-{timezone.now():%Y%m%d%H%M%S
 
 
 def validate_document(document,lines):
+    if document.status!='draft':raise ValidationError('Yalnız taslak fiş işlenebilir veya düzenlenebilir.')
     if document.kind not in ('delivery','receipt','transfer','count'):raise ValidationError('Ters fiş yalnız özgün fişten oluşturulur.')
     if not lines:raise ValidationError('En az bir fiş kalemi girin.')
     if document.kind in ('delivery','transfer','count') and not document.source_warehouse_id:raise ValidationError('Çıkış / sayım deposu seçin.')
@@ -206,14 +207,16 @@ def validate_document(document,lines):
 
 @with_actor
 @transaction.atomic
-def post_document(document_id,actor):
+def post_document(document_id,actor,expected_revision=None):
     require(actor,'post_stockdocument')
-    document=StockDocument.objects.select_for_update().select_related('order').get(pk=document_id)
+    document=StockDocument.objects.select_for_update(of=('self',)).select_related('order').get(pk=document_id)
     if document.status=='posted':return document
+    if expected_revision is not None and document.revision!=expected_revision:
+        raise ValidationError('Taslak başka bir işlemde değişti. İşlemeden önce güncel taslağı tekrar inceleyin.')
     if document.order_id:
         document.order=Order.objects.select_for_update().get(pk=document.order_id)
         list(document.order.lines.select_for_update().order_by('pk'))
-    lines=list(document.lines.select_related('product','order_line__order'))
+    lines=list(document.lines.filter(active=True).select_related('product','order_line__order'))
     warehouse_ids=[pk for pk in (document.source_warehouse_id,document.target_warehouse_id) if pk]
     products=lock_stock(warehouse_ids,[line.product_id for line in lines])
     for line in lines:line.product=products[line.product_id]

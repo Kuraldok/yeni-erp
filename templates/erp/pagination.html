@@ -1,0 +1,7 @@
+{% if page and page.paginator.num_pages > 1 %}
+<nav class="pagination" aria-label="Sayfalama">
+  {% if page.has_previous %}<a href="?{{ page_query }}&amp;page={{ page.previous_page_number }}">← Önceki</a>{% endif %}
+  <span>Sayfa {{ page.number }} / {{ page.paginator.num_pages }} · {{ page.paginator.count }} kayıt</span>
+  {% if page.has_next %}<a href="?{{ page_query }}&amp;page={{ page.next_page_number }}">Sonraki →</a>{% endif %}
+</nav>
+{% endif %}

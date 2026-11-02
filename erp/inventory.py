@@ -95,7 +95,7 @@ def post_production(job, actor, actual_quantity, *, scrap_quantity=0, scrap_reas
         money, movement_cost, refresh_job_reservations, release_job_reservations)
     if not actor or not actor.has_perm('erp.post_production_stock'):
         raise PermissionDenied('Üretim stok işlemi yetkiniz yok.')
-    job=ProductionJob.objects.select_for_update().select_related('product','order_line__order').get(pk=job.pk)
+    job=ProductionJob.objects.select_for_update(of=('self',)).select_related('product','order_line__order').get(pk=job.pk)
     if job.state!='running':raise ValidationError('Bu iş üretimde değil.')
     if job.posting_version!=expected_version:raise ValidationError('Üretim fişi sürümü değişti; sayfayı yenileyin. İşlem tekrarlanmadı.')
     if job.steps.filter(completed_at__isnull=True).count()!=1:raise ValidationError('Stok işlemi yalnızca son üretim aşamasında yapılabilir.')

@@ -4,9 +4,11 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, OperationalError, transaction
-from django.forms import formset_factory
+from django.db.models import Q
+from django.forms import BaseFormSet, formset_factory
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.urls import reverse
 from django.views.decorators.vary import vary_on_headers
 from .product_details import product_detail_context
 from .products import main_products
@@ -25,33 +27,54 @@ class ReasonForm(forms.Form):
 
 
 class DocumentForm(forms.ModelForm):
+    expected_revision=forms.IntegerField(widget=forms.HiddenInput,required=False)
+    refresh_count_baseline=forms.BooleanField(label='Sayımı yeniden yaptım; stok karşılaştırmasını güncelle',required=False)
     class Meta:
         model=StockDocument
         fields=['number','kind','order','source_warehouse','target_warehouse','date','reason']
         widgets={'date':forms.DateInput(attrs={'type':'date'},format='%Y-%m-%d')}
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
+        self.fields['expected_revision'].required=bool(self.instance.pk)
+        self.initial['expected_revision']=self.instance.revision
+        if not self.instance.pk or self.data.get('kind',self.instance.kind)!='count':
+            self.fields.pop('refresh_count_baseline')
         self.fields['kind'].choices=[(k,v) for k,v in self.fields['kind'].choices if k in ('delivery','receipt','transfer','count')]
         self.fields['order'].queryset=Order.objects.filter(status='approved')
         self.fields['number'].required=False
         self.fields['number'].help_text='Boş bırakırsanız fiş numarası oluşturulur.'
     def clean_number(self):return self.cleaned_data.get('number') or document_number()
+    def clean(self):
+        data=super().clean()
+        if self.instance.pk and data.get('expected_revision')!=self.instance.revision:
+            raise forms.ValidationError('Taslak başka bir işlemde değişti. Güncel taslağı açıp tekrar kontrol edin.')
+        return data
 
 
 class DocumentLineForm(forms.Form):
+    line_id=forms.ModelChoiceField(queryset=StockDocumentLine.objects.none(),widget=forms.HiddenInput,required=False)
+    remove=forms.BooleanField(label='Bu kalemi taslaktan çıkar',required=False)
     order_line=forms.ModelChoiceField(label='Sipariş kalemi (teslimat / mal kabul)',queryset=OrderLine.objects.none(),required=False)
     product=forms.ModelChoiceField(label='Stok kartı (transfer / sayım)',queryset=Product.objects.none(),required=False)
     quantity=forms.DecimalField(label='Miktar / sayılan stok',max_digits=24,decimal_places=12,min_value=0)
     unit_cost=forms.DecimalField(label='Birim maliyet (TL, biliniyorsa)',max_digits=32,decimal_places=8,min_value=0,required=False)
-    def __init__(self,*args,order=None,kind='',can_view_orders=False,**kwargs):
+    def __init__(self,*args,order=None,kind='',can_view_orders=False,document=None,**kwargs):
         self.kind=kind
         super().__init__(*args,**kwargs)
+        if document is None:
+            self.fields.pop('line_id');self.fields.pop('remove')
+        else:
+            self.fields['line_id'].queryset=document.lines.filter(active=True)
         self.fields['product'].queryset=Product.objects.filter(active=True).exclude(unit='')
+        if document is not None:
+            self.fields['product'].queryset=Product.objects.filter(Q(active=True)&~Q(unit='')|Q(pk__in=document.lines.filter(active=True).values('product_id')))
         if order and can_view_orders:
             self.fields['order_line'].queryset=order.lines.filter(status='active').select_related('product')
             self.fields['order_line'].label_from_instance=lambda line:f'{line.product_code or line.product.code} · kalan {line.remaining_quantity} {line.unit}'
     def clean(self):
         data=super().clean()
+        if data.get('remove'):
+            return data
         line=data.get('order_line');product=data.get('product')
         if self.kind in ('delivery','receipt'):
             if not line:raise forms.ValidationError('Sipariş kalemini seçin.')
@@ -66,40 +89,110 @@ class DocumentLineForm(forms.Form):
         return data
 
 
-DocumentLines=formset_factory(DocumentLineForm,extra=3,max_num=200,validate_max=True)
+class BaseDocumentLines(BaseFormSet):
+    def __init__(self,*args,document=None,**kwargs):
+        self.document=document
+        super().__init__(*args,**kwargs)
+    def clean(self):
+        super().clean()
+        if any(self.errors) or self.document is None:return
+        identities=[form.cleaned_data['line_id'].pk for form in self.forms if form.cleaned_data.get('line_id')]
+        known=set(self.document.lines.filter(active=True).values_list('pk',flat=True))
+        if len(identities)!=len(set(identities)) or set(identities)!=known:
+            raise ValidationError('Taslak kalemleri eksik, yinelenmiş veya başka belgeye ait. Güncel taslağı yeniden açın.')
+
+
+DocumentLines=formset_factory(DocumentLineForm,formset=BaseDocumentLines,extra=3,max_num=200,validate_max=True)
 
 
 @login_required
-def create_document(request):
-    permissions(request.user,'add_stockdocument','view_stockdocument','view_stockdocumentline','view_product','view_warehouse')
-    kind=request.POST.get('kind','') if request.method=='POST' else request.GET.get('kind','transfer')
-    form=DocumentForm(request.POST or None,initial={'kind':kind,'order':request.GET.get('order'),'date':timezone.localdate()})
+@transaction.atomic
+def create_document(request,pk=None):
+    permissions(request.user,'change_stockdocument' if pk else 'add_stockdocument','view_stockdocument','view_stockdocumentline','view_product','view_warehouse')
+    doc=get_object_or_404(StockDocument.objects.select_for_update(),pk=pk) if pk else StockDocument()
+    if pk and doc.status!='draft':raise PermissionDenied('Yalnız taslak fiş düzenlenebilir.')
+    old_kind,old_source=doc.kind,doc.source_warehouse_id
+    kind=request.POST.get('kind','') if request.method=='POST' else doc.kind or request.GET.get('kind','transfer')
+    initial={'kind':kind,'order':doc.order_id if pk else request.GET.get('order'),'date':doc.date if pk else timezone.localdate()}
+    form=DocumentForm(request.POST or None,instance=doc,initial=initial)
     can_orders=request.user.has_perm('erp.view_order') and request.user.has_perm('erp.view_orderline')
     if not can_orders:form.fields['order'].queryset=Order.objects.none()
-    selected=request.POST.get('order','') if request.method=='POST' else request.GET.get('order','')
+    selected=request.POST.get('order','') if request.method=='POST' else doc.order_id if pk else request.GET.get('order','')
     from .orders import selection_pk
     order=Order.objects.filter(pk=selection_pk(selected)).first() if can_orders else None
-    lines=DocumentLines(request.POST or None,prefix='items',form_kwargs={'order':order,'kind':kind,'can_view_orders':can_orders})
+    existing=list(doc.lines.filter(active=True).select_related('product','order_line')) if pk else []
+    initial_lines=[dict(line_id=line.pk,product=line.product_id,order_line=line.order_line_id,quantity=line.quantity,unit_cost=line.unit_cost) for line in existing]
+    lines=DocumentLines(request.POST or None,prefix='items',initial=initial_lines,document=doc if pk else None,
+        form_kwargs={'order':order,'kind':kind,'can_view_orders':can_orders,'document':doc if pk else None})
     if request.method=='POST' and 'refresh' not in request.POST:
         valid=form.is_valid();valid=lines.is_valid() and valid
         if valid:
             try:
                 with transaction.atomic():
-                    doc=form.save(commit=False);doc.created_by=request.user;doc.save()
-                    records=[]
+                    doc=form.save(commit=False)
+                    records=[];removed=[]
                     for item in lines:
                         if not item.cleaned_data:continue
                         row=item.cleaned_data
-                        records.append(StockDocumentLine(document=doc,product=row['product'],order_line=row.get('order_line'),quantity=row['quantity'],unit=row['product'].unit,unit_cost=row.get('unit_cost')))
+                        previous=row.get('line_id')
+                        if row.get('remove'):
+                            if previous:removed.append(previous)
+                            continue
+                        record=previous or StockDocumentLine(document=doc)
+                        changed_product=previous is None or record.product_id!=row['product'].pk
+                        record.product=row['product'];record.order_line=row.get('order_line')
+                        record.quantity=row['quantity'];record.unit_cost=row.get('unit_cost')
+                        if changed_product:record.unit=record.product.unit
+                        if doc.kind=='count' and (changed_product or old_kind!='count' or old_source!=doc.source_warehouse_id or form.cleaned_data.get('refresh_count_baseline')):
+                            record.baseline_quantity=stock_balance(record.product,doc.source_warehouse_id)
+                        records.append(record)
                     from .stock import validate_document
                     validate_document(doc,records)
-                    for record in records:record.save()
+                    if not pk:doc.created_by=request.user
+                    else:
+                        doc.revision+=1
+                        doc._audit_reason='Taslak stok belgesi düzenlendi.'
+                    doc.save()
+                    for record in records:
+                        record.document=doc
+                        record.save()
+                    for record in removed:
+                        record.active=False
+                        record._audit_reason='Kalem taslaktan çıkarıldı; geçmiş kaydı korundu.'
+                        record.save(update_fields=['active'])
             except ValidationError as exc:form.add_error(None,exc.messages)
             except (OperationalError,IntegrityError):form.add_error(None,'Fiş kaydedilemedi; numarayı ve güncel kayıtları kontrol edin.')
             else:return redirect('stock_document_detail',pk=doc.pk)
-    return render(request,'erp/document_form.html',{'form':form,'lines':lines,'slug':'stok-belgeleri',
-        'product_units':{str(pk):unit for pk,unit in Product.objects.filter(active=True).values_list('pk','unit')},
+    return render(request,'erp/document_form.html',{'form':form,'lines':lines,'slug':'stok-belgeleri','document':doc if pk else None,'editing':bool(pk),
+        'product_units':{str(identity):unit for identity,unit in Product.objects.filter(active=True).values_list('pk','unit')},
         'line_units':{str(line.pk):line.unit for line in order.lines.all()} if order else {}})
+
+
+class CancelDocumentForm(ReasonForm):
+    expected_revision=forms.IntegerField(widget=forms.HiddenInput)
+
+
+@login_required
+@transaction.atomic
+def cancel_document(request,pk):
+    permissions(request.user,'view_stockdocument','cancel_stockdocument')
+    doc=get_object_or_404(StockDocument.objects.select_for_update(),pk=pk)
+    if doc.status=='cancelled':return redirect('stock_document_detail',pk=pk)
+    if doc.status!='draft':raise PermissionDenied('İşlenmiş belge iptal edilmez; ters fiş oluşturun.')
+    form=CancelDocumentForm(request.POST or None,initial={'expected_revision':doc.revision})
+    if request.method=='POST' and form.is_valid():
+        if form.cleaned_data['expected_revision']!=doc.revision:
+            form.add_error(None,'Taslak başka bir işlemde değişti. Güncel taslağı açıp tekrar kontrol edin.')
+        else:
+            doc.status='cancelled';doc.cancelled_by=request.user;doc.cancelled_at=timezone.now()
+            doc.cancellation_reason=form.cleaned_data['reason'];doc.revision+=1
+            doc._audit_action='cancel';doc._audit_reason=doc.cancellation_reason
+            doc.save()
+            messages.success(request,'Taslak iptal edildi; belge ve kalem geçmişi korundu.')
+            return redirect('stock_document_detail',pk=pk)
+    return render(request,'erp/action_form.html',{'form':form,'title':f'{doc.number} · Taslağı iptal et',
+        'notice':'İptal nedeni ve işlemi yapan kullanıcı kaydedilir. Belge ve kalemler silinmez.',
+        'button':'Taslağı iptal et','back':reverse('stock_document_detail',args=[pk]),'slug':'stok-belgeleri'})
 
 
 @login_required
@@ -109,7 +202,10 @@ def document_detail(request,pk):
     reason_form=ReasonForm(request.POST or None)
     if request.method=='POST':
         try:
-            if request.POST.get('action')=='post':post_document(pk,request.user)
+            if request.POST.get('action')=='post':
+                try:revision=int(request.POST.get('expected_revision','0'))
+                except (ValueError,TypeError):raise ValidationError('Taslağın güncel sürümünü tekrar açın.')
+                post_document(pk,request.user,expected_revision=revision)
             elif request.POST.get('action')=='reverse':
                 if not reason_form.is_valid():raise ValidationError('Ters fiş gerekçesi girin.')
                 reversal=reverse_document(pk,request.user,reason_form.cleaned_data['reason'])
@@ -125,12 +221,8 @@ def document_detail(request,pk):
 
 
 def stock_card_rows(user,product):
-    rows=[]
-    if user.has_perm('erp.view_stockmovement') and user.has_perm('erp.view_warehouse'):
-        for warehouse in Warehouse.objects.all():
-            can_reserve=user.has_perm('erp.view_stockreservation')
-            rows.append({'warehouse':warehouse,'quantity':stock_balance(product,warehouse),'reserved':reserved_stock(product,warehouse) if can_reserve else None,'available':available_stock(product,warehouse) if can_reserve else None,'valuation':valuation(product,warehouse)})
-    return rows
+    from .stock_queries import stock_card_balances
+    return stock_card_balances(user,product)
 
 
 @login_required

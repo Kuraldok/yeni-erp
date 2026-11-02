@@ -55,3 +55,15 @@
 - Hammadde → yarı mamul üretimi → mamul üretiminde yarı mamul tüketimi akışı doğrulandı; otomatik giriş/çıkışlar doğru miktarlarda oluştu. Eski stok hareketleri ve kaynak satırları korundu.
 - Chromium'da ayrı sentetik veritabanıyla ürün seçenekleri, hammadde girişi, hatalı yarı mamul gönderiminde stok/audit kaydı oluşmaması, dış temin rotası ve üretim açma bağlantısının bulunmaması kontrol edildi. Masaüstü/mobil ekran boyutlarında sayfa taşması veya JavaScript hatası görülmedi.
 - Geliştirme kataloğu boş olduğundan rota komutu 0 yeni kayıt oluşturdu. Geliştirme veritabanının dosya özeti değişmedi; kural yeni Excel aktarımlarında otomatik uygulanacak.
+
+## Yedi inceleme bulgusunun düzeltilmesi — 2 Kasım 2026
+
+- Geçici veritabanında 258 test geçti: önceki 226 teste ek 32 senaryo. Django kontrolü, migration tutarlılığı ve JavaScript sözdizimi kontrolü başarılı.
+- Açık çıktı/girdi işlerinde kartın birim/tür/etkinlik/üretim tanımı değişiklikleri ve kontrollü toplu yollar sınandı. İşlem geçmişi korundu; kart açıklaması gibi güvenli alanlar düzenlenebiliyor. Elle/ORM/toplu açılan hammaddeler dış temin rotasını otomatik alıyor; yeni hammadde iç üretim rotası ve üretim çıktısı reddediliyor.
+- 1 Kasım üretimi ve 2 Kasım ters fişi ayrı dönemlerde +2 / -2 olarak doğrulandı. Önceki günün stok ve üretim raporu tutarlı kaldı; aynı dönem iptalinde net sıfır, bilinmeyen maliyet ve negatif sayısal CSV kontrol edildi.
+- Aktarımda alan eksiği sıfır olsa da rota uyarısı görünür oldu. Kaynak grubu filtresi, yetkili POST ile yeniden değerlendirme, kullanıcı/zaman izi ve özgün kaynak hücrelerinin korunması doğrulandı.
+- İlk 50 kart dışındaki kritik stok ana panelde önceliklendirildi. 61 kritik kartın tamamı iki sayfada gösterildi; raporların 50 kayıtla sayfalanması ve CSV'nin bütün filtrelenmiş kayıtları içermesi sınandı.
+- Taslak fiş düzenleme, kalemi geçmişte saklayarak çıkarma, iptal nedeni/kullanıcı/zaman, eksik/yinelenmiş/başka belgeye ait kalem kimlikleri, eski sürümden düzenleme/iptal/işleme, yetkiler, CSRF ve sayımı açıkça yenileme kontrolleri geçti. İşlenmiş ve iptal edilmiş fişler korunuyor.
+- Stok kartı depo bakiyesi okumaları 2 ve 22 depoda aynı üç sorguyla çalıştı; önceki incelemede 4 depoda 29 sorgu vardı. Üretim raporunda iş sayısı artınca sorgu sayısı büyümedi; sipariş teslimatları toplu hesaplandı.
+- Chromium'da ayrı sentetik veritabanıyla kart koruması → elle hammadde → kritik stok → dönem raporu/CSV → rota uyarısı/yeniden değerlendirme → taslak düzenle/kalem çıkar/işle → gerekçeli iptal akışı tamamlandı. Masaüstü/mobil sayfa taşması veya JavaScript hatası görülmedi.
+- Geliştirme ortamına `0012` uygulandı ve roller ek izinlerle güncellendi. 35 mevcut tablonun bütün özgün satırları ve eski sütun değerleri bire bir korundu; SQLite bütünlük ve yabancı anahtar denetimleri başarılı. Test hesapları ve işlem örnekleri yalnız geçici veritabanında kaldı. Canlı dağıtım yapılmadı.
