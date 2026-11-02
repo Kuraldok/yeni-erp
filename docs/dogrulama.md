@@ -29,3 +29,11 @@
 - Ana projede 204 test geçti; Django kontrolü ve migration tutarlılığı başarılı. Yeni migration gerekmedi.
 - Masa tablası ahşap, diğer adı belli yarı mamuller döküm olarak doğrulandı. Mamul etiketli bileşenler, ad/harf/boşluk farkları, kapsam dışı kartlar, eksik ad, ortak kart çelişkisi ve mevcut özel rota adımlarının korunması test edildi.
 - Geliştirme veritabanında henüz ürün/reçete kaydı bulunmadığından rota komutu 0 yeni kayıt oluşturdu. Yeni aktarımlarda kural otomatik uygulanır. Geliştirme veritabanının dosya özeti değişmedi; önceki kayıtlar ve kaynaklar korundu.
+
+## Ürün kartlarında sayfa içi sekmeler — 2 Kasım 2026
+
+- Geçici veritabanıyla 206 test geçti; Django kontrolü, migration tutarlılığı ve JavaScript sözdizimi kontrolü başarılı. Şema değişikliği gerekmedi.
+- Ürün ayrıntılarında kaynak satırı sütununun gizlendiği, kaynak kayıtlarının korunduğu ve sayfa içi ayrıntı isteklerinde mevcut ürün/reçete izinlerinin uygulandığı doğrulandı.
+- Chromium'da ayrı sentetik veritabanıyla kod/ad/Ayrıntılar bağlantıları, aynı ürünün tekrar seçilmesi, sekme kapatma, klavye kullanımı, ürün bilgileri ve bileşen geçişleri, reçete sürümü seçimi, başarısız isteği yeniden deneme doğrulandı. Listeye dönüldüğünde arama, grup filtresi, sayfa, dikey ve tablo içi yatay kaydırma konumları korundu.
+- Masaüstü ve mobil ekran boyutlarında sayfa taşması veya JavaScript hatası görülmedi. JavaScript kapalıyken ayrıntıların aynı tarayıcı sekmesinde açıldığı kontrol edildi.
+- Geliştirme veritabanının dosya özeti değişmedi. Çalışma geliştirme ortamında tamamlandı; bu adımda GitHub'a aktarım veya canlı dağıtım yapılmadı.

@@ -9,6 +9,7 @@ from django.forms import modelform_factory
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import Http404
 from django.urls import reverse
+from django.views.decorators.vary import vary_on_headers
 from .models import Product, Partner, Order, OrderLine, StockMovement, ProductionJob, ProductionRoute, MaterialRecipe, MaterialRequirement, stock_balance
 from .registry import MODULES, READ_ONLY_MODELS
 from .products import main_products, order_product_cards
@@ -137,6 +138,7 @@ def listing(request, slug):
 
 
 @login_required
+@vary_on_headers('X-Product-Tab')
 def product_detail(request, pk):
     if not request.user.has_perm('erp.view_product'):
         raise PermissionDenied
@@ -177,11 +179,12 @@ def product_detail(request, pk):
                 {'title': 'Hammaddeler', 'rows': [r for r in rows if r['line'].component_kind == 'Hammadde']},
                 {'title': 'Diğer bileşenler', 'rows': [r for r in rows if r['line'].component_kind != 'Hammadde' and not is_semifinished_component(r['line'].component_kind, r['line'].sheet)]},
             ]
-    return render(request, 'erp/product.html', {
+    embedded = request.headers.get('X-Product-Tab') == '1'
+    return render(request, 'erp/product_content.html' if embedded else 'erp/product.html', {
         'product': product, 'tab': tab, 'can_view_components': can_view_components,
         'recipes': recipes, 'selected_recipe': selected_recipe, 'sections': sections,
         'slug': 'urunler', 'display_group': ', '.join(sorted(group_names)) or '—',
-        'is_grill': is_grill, 'direct_routes': direct_routes,
+        'is_grill': is_grill, 'direct_routes': direct_routes, 'embedded': embedded,
     })
 
 @login_required

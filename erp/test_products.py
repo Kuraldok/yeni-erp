@@ -96,11 +96,44 @@ class ProductScreenTests(TestCase):
         self.assertEqual(len(response.context['rows']), 2)
         self.assertEqual(response.context['category'], 'Özel Ürünler')
 
-    def test_product_code_and_name_open_separate_tab(self):
+    def test_product_links_open_inside_the_list_page(self):
         response = self.client.get(self.url, {'category': 'Banklar'})
         link = reverse('product_detail', args=[self.parent.pk])
-        self.assertContains(response, f'href="{link}" target="_blank" rel="noopener"')
+        self.assertContains(response, f'href="{link}" data-product-open', count=3)
+        self.assertNotContains(response, 'target="_blank"')
+        self.assertContains(response, 'data-product-workspace')
+        self.assertContains(response, '/static/product-tabs.js')
         self.assertEqual(response.context['rows'][0]['product_detail'], link)
+        other_module = self.client.get(reverse('listing', args=['receteler']))
+        self.assertNotContains(other_module, 'data-product-workspace')
+        self.assertNotContains(other_module, '/static/product-tabs.js')
+
+    def test_source_row_is_hidden_without_changing_source_data(self):
+        before = list(MaterialRequirement.objects.order_by('pk').values())
+        url = reverse('product_detail', args=[self.parent.pk])
+        for headers in ({}, {'X-Product-Tab': '1'}):
+            response = self.client.get(url, headers=headers)
+            self.assertNotContains(response, 'Kaynak satırı')
+            for line in MaterialRequirement.objects.filter(recipe__product=self.parent):
+                self.assertNotContains(response, f'{line.sheet}:{line.row_number}')
+            self.assertContains(response, '<th>İnceleme</th>', html=True)
+        self.assertEqual(list(MaterialRequirement.objects.order_by('pk').values()), before)
+
+    def test_embedded_detail_uses_shared_content_without_a_second_page_shell(self):
+        url = reverse('product_detail', args=[self.parent.pk])
+        response = self.client.get(url, headers={'X-Product-Tab': '1'})
+        self.assertTemplateUsed(response, 'erp/product_content.html')
+        self.assertTemplateNotUsed(response, 'base.html')
+        self.assertNotContains(response, '<html')
+        self.assertContains(response, f'data-product-id="{self.parent.pk}"')
+        self.assertContains(response, 'Ahşap yarı mamul')
+        self.assertContains(response, f'href="{url}?tab=overview')
+        self.assertContains(response, f'action="{url}"')
+        self.assertContains(response, f'for="product-{self.parent.pk}-recipe"')
+        self.assertIn('X-Product-Tab', response['Vary'])
+        full = self.client.get(url)
+        self.assertTemplateUsed(full, 'base.html')
+        self.assertIn('X-Product-Tab', full['Vary'])
 
     def test_detail_groups_components_and_preserves_blanks(self):
         response = self.client.get(reverse('product_detail', args=[self.parent.pk]))
@@ -134,26 +167,30 @@ class ProductScreenTests(TestCase):
     def test_cannot_request_another_products_recipe_or_component_as_main(self):
         other_recipe = MaterialRecipe.objects.get(product=self.other)
         url = reverse('product_detail', args=[self.parent.pk])
-        self.assertEqual(self.client.get(url, {'recipe': other_recipe.pk}).status_code, 404)
-        self.assertEqual(self.client.get(url, {'recipe': 'bad'}).status_code, 404)
-        self.assertEqual(self.client.get(url, {'tab': 'bad'}).status_code, 404)
-        self.assertEqual(self.client.get(reverse('product_detail', args=[self.raw.pk])).status_code, 404)
+        for headers in ({}, {'X-Product-Tab': '1'}):
+            self.assertEqual(self.client.get(url, {'recipe': other_recipe.pk}, headers=headers).status_code, 404)
+            self.assertEqual(self.client.get(url, {'recipe': 'bad'}, headers=headers).status_code, 404)
+            self.assertEqual(self.client.get(url, {'tab': 'bad'}, headers=headers).status_code, 404)
+            self.assertEqual(self.client.get(reverse('product_detail', args=[self.raw.pk]), headers=headers).status_code, 404)
 
     def test_component_permissions_and_login_required(self):
         user = User.objects.create_user('only-product-view')
         user.user_permissions.add(Permission.objects.get(content_type__app_label='erp', codename='view_product'))
         self.client.force_login(user)
         url = reverse('product_detail', args=[self.parent.pk])
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['tab'], 'overview')
-        self.assertNotContains(response, 'Ahşap yarı mamul')
-        self.assertEqual(self.client.get(url, {'tab': 'components'}).status_code, 403)
+        for headers in ({}, {'X-Product-Tab': '1'}):
+            response = self.client.get(url, headers=headers)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.context['tab'], 'overview')
+            self.assertNotContains(response, 'Ahşap yarı mamul')
+            self.assertEqual(self.client.get(url, {'tab': 'components'}, headers=headers).status_code, 403)
         no_role = User.objects.create_user('no-product-role')
         self.client.force_login(no_role)
         self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertEqual(self.client.get(url, headers={'X-Product-Tab': '1'}).status_code, 403)
         self.client.logout()
         self.assertEqual(self.client.get(url).status_code, 302)
+        self.assertEqual(self.client.get(url, headers={'X-Product-Tab': '1'}).status_code, 302)
 
     def test_manual_product_without_recipe_has_clear_empty_state(self):
         self.assertContains(self.client.get(reverse('product_detail', args=[self.manual.pk])), 'Bu ana ürün için henüz reçete kaydı yok.')
