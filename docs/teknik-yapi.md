@@ -116,3 +116,10 @@ SQLite geliştirme testleri PostgreSQL eşzamanlılık garantisi sayılmaz. Canl
 `SEHPA_CATEGORIES`, Sehpa/Sehpalar sayfalarını ortak normalizasyonla tanır. `component_method()` Masa tablası bileşenini ahşap, diğer adı belli yarı mamulleri döküm olarak sınıflandırır. Bu kategori `accepts_finished_components()` kapsamındadır; Mamul etiketli bileşenler stok kartı türü veya kaynak etiket değiştirilmeden eşdeğer kabul edilir. Adı boş satıra yöntem tahmin edilmez. Mevcut `RULE_KEY` ve rota uygulama servisi korunmuştur; aynı kart için tekrar çalıştırma rota/adım çoğaltmaz, özel adım ve süreleri ezmez. Kategoriler arası çelişki önceki atama korunarak raporlanır.
 
 `erp/test_sehpa_routes.py` ahşap/döküm ayrımını, tekil/çoğul ve harf/boşluk farklarını, Mamul etiketini, kapsam dışı hammadde/parça/ana ürünü, eksik adı, tekrar çalıştırmayı, özel adımları, ortak kart çelişkisini ve ürün ayrıntısındaki yarı mamul görünümünü doğrular. Yeni şema geçişi gerekmez; stok veya üretim fişi oluşturulmaz.
+
+
+## Hammadde temini ve manuel stokta yarı mamul kısıtı
+
+`apply_component_routes()` kategori üretim kurallarından sonra `apply_raw_material_routes()` servisini çağırır. Hammadde kartlarında ayrı `raw-material-purchase-v1` kimliği kullanılır; kaynaklı çağrı yalnız ilgili aktarımın bağlı kartlarını kapsar. Geçerli etkin dış temin rotası yeniden kullanılır. Uygun olmayan etkin eski rotalar silinmeden pasifleştirilir; adımlar ve iş bağlantıları korunur. Açık üretim işiyle çelişen kartlar `skipped` çıktısına alınır. Kodsuz kaynak satırlarına tahmini kart veya kod eklenmez.
+
+`manual_stock_products()` manuel stok formunun izinle sınırlandırılmış ürün sorgusundan yarı mamulleri çıkarır. Kaynakta Mamul yazan, kategori kuralına göre yarı mamul sayılan bileşenler de kaynak türü değiştirilmeden dışarıda bırakılır. Aynı sorgu ModelChoiceField doğrulamasında ve birim verisinde kullanılır; gönderilmiş kimliklerle kısıt aşılamaz. Stok hareketi modeli ve üretim/fiş servisleri bu seçim kısıtına tabi değildir. `erp/test_raw_procurement.py` rota tekrarı, sürüm ve geçmiş koruması, açık iş, kaynak kapsamı, izin, manuel seçim ve otomatik yarı mamul üretim/tüketimini doğrular.

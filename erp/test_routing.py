@@ -79,10 +79,13 @@ class ComponentRoutingTests(TestCase):
             self.assertEqual(route.product.supply_method,'purchase')
             self.assertEqual(list(route.steps.values_list('name',flat=True)),['Dışarıdan hazır temin'])
 
-    def test_only_selected_categories_and_semifinished_are_assigned(self):
+    def test_category_production_and_raw_procurement_are_separate(self):
         self.assertEqual(self.route('TC-1').flow.code,'casting')
-        self.assertFalse(ProductionRoute.objects.filter(product__code__in=['BR-1','B-1','F-1','T-1']).exists())
-        for code in ['BR-1','B-1','F-1','T-1']:
+        raw_route=ProductionRoute.objects.get(product__code='BR-1')
+        self.assertEqual(raw_route.supply_method,'purchase')
+        self.assertIsNone(raw_route.flow_id)
+        self.assertFalse(ProductionRoute.objects.filter(product__code__in=['B-1','F-1','T-1']).exists())
+        for code in ['B-1','F-1','T-1']:
             p=Product.objects.get(code=code)
             self.assertEqual(p.production_area,'')
             self.assertEqual(p.supply_method,'')
@@ -97,9 +100,9 @@ class ComponentRoutingTests(TestCase):
         count=RouteStep.objects.count()
         result=apply_component_routes()
         self.assertEqual(result['created'],0)
-        self.assertEqual(result['existing'],8)
-        self.assertEqual(result['assignments'],{'casting':5,'wood':1,'purchase':2})
-        self.assertEqual(ProductionRoute.objects.count(),8)
+        self.assertEqual(result['existing'],9)
+        self.assertEqual(result['assignments'],{'casting':5,'wood':1,'purchase':3})
+        self.assertEqual(ProductionRoute.objects.count(),9)
         self.assertEqual(RouteStep.objects.count(),count)
         step.refresh_from_db()
         self.assertEqual(step.name,'Özel kalıplama')

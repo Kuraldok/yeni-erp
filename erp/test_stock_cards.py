@@ -130,7 +130,8 @@ class StockCardScreenTests(TestCase):
             self.assertEqual(self.client.get(reverse('edit', args=['stok-kartlari', product.pk])).status_code, 200)
         form = self.client.get(reverse('create', args=['stok'])).context['form']
         choices = set(form.fields['product'].queryset.values_list('pk', flat=True))
-        self.assertTrue({self.raw.pk, self.semi.pk, self.part.pk} <= choices)
+        self.assertTrue({self.raw.pk, self.part.pk} <= choices)
+        self.assertNotIn(self.semi.pk, choices)
 
     def test_stock_details_preserve_component_stock_and_reservation_permissions(self):
         viewer = User.objects.create_user('stock-card-viewer')

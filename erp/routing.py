@@ -11,6 +11,7 @@ from .workflows import ensure_workflows
 
 # Keep the existing identity so repeated setup preserves routes and custom steps.
 RULE_KEY = 'fountain-bench-v1'
+RAW_RULE_KEY = 'raw-material-purchase-v1'
 
 
 def normalized(value):
@@ -189,5 +190,64 @@ def apply_component_routes(source=None):
         if updates:
             product.save(update_fields=updates)
         counts[method] += 1
+    raw_result = apply_raw_material_routes(source=source)
+    result['created'] += raw_result['created']
+    result['existing'] += raw_result['existing']
+    result['skipped'].extend(raw_result['skipped'])
+    counts.update(raw_result['assignments'])
     result['assignments'] = dict(counts)
+    return result
+
+
+@transaction.atomic
+def apply_raw_material_routes(source=None):
+    """Procure raw cards without rewriting historical routes or open jobs."""
+    from .models import ProductionJob
+    products = Product.objects.filter(kind='raw')
+    lines = MaterialRequirement.objects.all()
+    if source is not None:
+        lines = lines.filter(source=source)
+        referenced = set(lines.values_list('component_id', flat=True))
+        referenced.update(MaterialRecipe.objects.filter(source=source).values_list('product_id', flat=True))
+        products = products.filter(pk__in=referenced)
+    result = {'created': 0, 'existing': 0, 'assignments': {}, 'skipped': []}
+    for line in lines.filter(component__isnull=True):
+        if normalized(line.component_kind) == 'hammadde' and not is_codeless_grill_material(line.component_kind, line.sheet, line.component_code):
+            result['skipped'].append(f'{line.sheet}:{line.row_number}: hammadde kartı eşleştirilmemiş; temin rotası atanmadı.')
+    assigned = 0
+    for product in products.select_for_update().order_by('pk'):
+        routes = list(product.productionroute_set.order_by('-version', '-pk'))
+        incompatible = [r for r in routes if r.active and (r.supply_method != 'purchase' or r.flow_id)]
+        needs_change = product.supply_method != 'purchase' or bool(product.production_area) or bool(incompatible)
+        if needs_change and ProductionJob.objects.filter(product=product, state__in=['draft', 'running']).exists():
+            result['skipped'].append(f'{product.code}: açık üretim işi var; mevcut tanım korundu. İş kapatıldıktan sonra temin rotasını tekrar uygulayın.')
+            continue
+        route = next((r for r in routes if r.active and r.supply_method == 'purchase' and not r.flow_id), None)
+        if route is None:
+            # An older managed definition may remain linked to completed jobs.
+            # Keep it intact and use a fresh version rather than reusing its key.
+            rule_key = '' if any(r.rule_key == RAW_RULE_KEY for r in routes) else RAW_RULE_KEY
+            version = max((r.version for r in routes), default=0) + 1
+            route = ProductionRoute.objects.create(product=product, name=f'{product.code} · Hammadde temin rotası',
+                version=version, supply_method='purchase', flow=None, rule_key=rule_key)
+            RouteStep.objects.create(route=route, sequence=1, name='Dışarıdan hazır temin',
+                workstation='Dış tedarik', duration_minutes=None)
+            result['created'] += 1
+        else:
+            result['existing'] += 1
+        for old in incompatible:
+            old.active = False
+            old.save(update_fields=['active'])
+        updates = []
+        if product.supply_method != 'purchase':
+            product.supply_method = 'purchase'
+            updates.append('supply_method')
+        if product.production_area:
+            product.production_area = ''
+            updates.append('production_area')
+        if updates:
+            product.save(update_fields=updates)
+        assigned += 1
+    if assigned:
+        result['assignments']['purchase'] = assigned
     return result

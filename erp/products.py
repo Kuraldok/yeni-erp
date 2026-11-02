@@ -16,6 +16,20 @@ def main_products():
     )
 
 
+def manual_stock_products(products):
+    """Exclude typed and source-labelled semi-finished cards from manual entry."""
+    from .routing import is_semifinished_component
+    lines = MaterialRequirement.objects.filter(component__kind__in=['', 'finished'])
+    kinds = Q(pk__in=[])
+    for kind, sheet in lines.order_by().values_list('component_kind', 'sheet').distinct():
+        if is_semifinished_component(kind, sheet):
+            kinds |= Q(component_kind=kind, sheet=sheet)
+    source_ids = lines.filter(kinds).exclude(
+        ~Q(component_code='') & Q(component_code=F('parent_code')),
+    ).values('component_id')
+    return products.exclude(kind='semi').exclude(pk__in=source_ids)
+
+
 def product_groups(products):
     groups = set(products.exclude(category='').values_list('category', flat=True))
     groups.update(

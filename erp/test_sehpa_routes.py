@@ -43,14 +43,15 @@ class SehpaRoutingTests(TestCase):
             self.assertEqual(line.raw['Bileşen Türü'],'Mamul')
             self.assertEqual(line.component.kind,'finished')
 
-    def test_raw_parts_and_main_product_do_not_receive_component_routes(self):
+    def test_raw_procurement_is_separate_from_sehpa_component_production(self):
         import_catalog(workbook([('Sehpalar',[
             [1,'P','Sehpa','TOP','Masa tablası','Yarı Mamul',1,'Adet'],
             [2,'P','Sehpa','RAW','Pik','Hammadde',5,'KG'],
             [3,'P','Sehpa','PART','Vida','Parça',4,'Adet'],
         ])]),'scope.xlsx')
-        self.assertFalse(ProductionRoute.objects.filter(product__code__in=['P','RAW','PART']).exists())
-        for product in Product.objects.filter(code__in=['P','RAW','PART']):
+        self.assertEqual(ProductionRoute.objects.get(product__code='RAW').supply_method,'purchase')
+        self.assertFalse(ProductionRoute.objects.filter(product__code__in=['P','PART']).exists())
+        for product in Product.objects.filter(code__in=['P','PART']):
             self.assertEqual(product.production_area,'')
             self.assertEqual(product.supply_method,'')
 

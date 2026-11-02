@@ -46,3 +46,12 @@
 - Chromium'da ayrı sentetik veritabanıyla liste → ürün sekmesi → depo bakiyeleri → bileşen kartı → listeye dönüş akışı tamamlandı. Kod/ad/Ayrıntılar bağlantıları, sekme kapatma, tekrar seçim, klavye kullanımı, reçete değiştirme, hata sonrası yeniden deneme ve JavaScript kapalı kullanım kontrol edildi.
 - Listeye dönüşte arama, grup, sayfa ve kaydırma konumları korundu. Masaüstü/mobil ekran boyutlarında sayfa taşması veya JavaScript hatası görülmedi. Bileşen düzenleme adresleri ve stok/üretim seçimleri korunuyor.
 - Geliştirme veritabanının dosya özeti değişmedi; test kayıtları yalnızca geçici veritabanında oluşturuldu. Çalışma geliştirme ortamında tamamlandı.
+
+## Hammadde temini ve manuel stok seçimi — 2 Kasım 2026
+
+- Geçici veritabanıyla 226 test geçti; Django kontrolü ve migration tutarlılığı başarılı. Şema değişikliği gerekmedi.
+- Bütün gruplarda hammadde dış temin rotası, Excel aktarımı, kaynak boşluklarının korunması, tekrar çalıştırma, özel tedarik adımları ve eski rota sürümlerinin korunması doğrulandı. Açık üretim işiyle çelişen kartta değişiklik yapılmadığı ve uyarı verildiği sınandı.
+- Manuel stok formunda yarı mamul seçiminin, birim verisinin ve doğrudan gönderilen ürün kimliklerinin kısıtlandığı doğrulandı. Kaynakta Mamul yazan yarı mamul bileşenleri de özgün etiket korunarak dışarıda bırakılıyor. Hammadde, ana ürün ve parça için manuel giriş ve kaydeden kullanıcı bilgisi çalışıyor.
+- Hammadde → yarı mamul üretimi → mamul üretiminde yarı mamul tüketimi akışı doğrulandı; otomatik giriş/çıkışlar doğru miktarlarda oluştu. Eski stok hareketleri ve kaynak satırları korundu.
+- Chromium'da ayrı sentetik veritabanıyla ürün seçenekleri, hammadde girişi, hatalı yarı mamul gönderiminde stok/audit kaydı oluşmaması, dış temin rotası ve üretim açma bağlantısının bulunmaması kontrol edildi. Masaüstü/mobil ekran boyutlarında sayfa taşması veya JavaScript hatası görülmedi.
+- Geliştirme kataloğu boş olduğundan rota komutu 0 yeni kayıt oluşturdu. Geliştirme veritabanının dosya özeti değişmedi; kural yeni Excel aktarımlarında otomatik uygulanacak.

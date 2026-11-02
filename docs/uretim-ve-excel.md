@@ -136,9 +136,17 @@ Kategori eşleştirmesi Excel sayfa adına göre yapılır; tanımlı tekil/ço�
 
 Sehpa / Sehpalar grubunda ahşap istisnası **Masa tablası** bileşen adının tamamına uygulanır; büyük/küçük harf ve fazla boşluk farkları desteklenir. Diğer adı belli yarı mamuller dökümdür. Kaynakta Mamul yazan bileşenler de aynı kurala dahildir. Adı boş bir bileşenin tabla mı, diğer yarı mamul mü olduğu tahmin edilmez; inceleme notuyla rota ataması yapılmaz. Aynı stok kartının başka kategoride farklı rota gerektirmesi mevcut atamayı değiştirmez; çelişki raporlanır.
 
-Izgara ana mamulü istisnası dışındaki üst ürünlere, hammaddelere, parçalara veya bu kuralların dışındaki kategorilere yeni rota atanmaz. Aynı kod hem üst ürün hem kendi bileşeni olarak verilmişse kendine bağlı rota oluşturulmaz. Kart başka bir üründe bileşen olarak kullanılıyorsa o gerçek bileşen ilişkisi değerlendirilebilir. Bir kart için ahşap ve döküm gibi çelişkili kurallar çıkarsa mevcut atama korunur; yeni seçim yapılmaz ve `setup_component_routes` çıktısındaki `skipped` listesinde açıklanır.
+Bu kategori üretim kuralları Izgara ana mamulü istisnası dışındaki üst ürünlere, hammaddelere, parçalara veya kapsam dışındaki kategorilere uygulanmaz. Hammaddelerin dışarıdan temin rotası aşağıdaki ayrı kuralla oluşturulur. Aynı kod hem üst ürün hem kendi bileşeni olarak verilmişse kendine bağlı rota oluşturulmaz. Kart başka bir üründe bileşen olarak kullanılıyorsa o gerçek bileşen ilişkisi değerlendirilebilir. Bir kart için ahşap ve döküm gibi çelişkili kurallar çıkarsa mevcut atama korunur; yeni seçim yapılmaz ve `setup_component_routes` çıktısındaki `skipped` listesinde açıklanır.
 
 Yeni Excel aktarımlarında kurallar otomatik uygulanır. Önceden aktarılmış ve kart bağlantısı bulunan satırlar için aynı `setup_component_routes` komutunu kullanın. Aynı dosyayı yeniden yüklemek aktarımı tekrarlamaz. Önceden çelişki nedeniyle kart bağlantısı boş bırakılmış kaynak satırları bu komutla yeniden yazılmaz; bu kayıtlar ayrıca incelenmelidir. Mevcut rotalar, adımlar, süreler ve başlatılmış iş emirleri korunur; bilinmeyen süre veya malzeme miktarı eklenmez.
+
+## Hammaddelerin dışarıdan temini ve manuel stok seçimi
+
+Hammadde kartları bütün ürün gruplarında **Dışarıdan hazır temin** yöntemine bağlanır. Yeni rotada tek **Dışarıdan hazır temin** adımı bulunur; ahşap/döküm akışı ve tahmini süre eklenmez. Yeni Excel aktarımı yalnız o kaynağa bağlı hammadde kartlarına bu kuralı uygular. Mevcut veya elle açılmış kartlar için `setup_component_routes` komutunu çalıştırın. Uygun mevcut dış temin rotası ve özel adımları korunur; tekrar çalıştırma yeni rota oluşturmaz.
+
+Hammadde için etkin bir iç üretim rotası varsa eski rota/adımları silinmeden pasifleştirilir ve dış temin sürümü kullanılır. Tamamlanan işlerin rota bağlantısı ve geçmişi değiştirilmez. Açık bir üretim işiyle çelişen kartta tanım korunur ve komutun `skipped` listesine açıklama eklenir; iş kapatıldıktan sonra komut tekrar çalıştırılır. Kart eşleştirmesi bulunmayan satırlar için stok kartı veya kod oluşturulmaz. Izgara'nın beklenen kodsuz hammadde yapısı korunur.
+
+**Stok hareketleri → Yeni kayıt** ekranında yarı mamul kartları seçilemez; elle gönderilen yarı mamul kimlikleri de reddedilir. Kategori kurallarında Mamul etiketiyle yarı mamul sayılan kaynak bileşenleri aynı kısıta dahildir; özgün tür etiketi korunur. Bu kısıt manuel forma aittir. Üretim fişleri yarı mamul girişini ve mamul üretiminde yarı mamul tüketimini kaydetmeye devam eder. Önceki stok hareketleri ve stok belgelerindeki depo işlemleri korunur.
 
 ## Ürün grubu filtresi ve ihtiyaç gösterimi
 

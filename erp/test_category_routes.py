@@ -120,7 +120,8 @@ class CategoryRoutingTests(TestCase):
         self.assertEqual(line.component_kind, 'Mamul')
         self.assertEqual(line.raw['Bileşen Türü'], 'Mamul')
         self.assertEqual(line.component.kind, 'finished')
-        self.assertFalse(ProductionRoute.objects.filter(product__code__in=['P', 'R', 'X']).exists())
+        self.assertEqual(self.route('R').supply_method, 'purchase')
+        self.assertFalse(ProductionRoute.objects.filter(product__code__in=['P', 'X']).exists())
         self.assertContains(self.client.get(reverse('route_detail', args=[route.pk])), 'Lata üretimi')
 
     def test_mixed_mamul_and_semifinished_labels_match_one_card_and_route(self):
@@ -198,9 +199,10 @@ class CategoryRoutingTests(TestCase):
             ]),
             ('Banklar', [[1, 'P3', 'Bank', 'B', 'Bitmiş bileşen', 'Mamul', 1, 'Adet']]),
         ]), 'unaffected.xlsx')
-        self.assertEqual(ProductionRoute.objects.count(), 0)
+        self.assertEqual(ProductionRoute.objects.get(product__code='R').supply_method, 'purchase')
+        self.assertEqual(ProductionRoute.objects.count(), 1)
         self.assertFalse(Product.objects.exclude(production_area='').exists())
-        self.assertFalse(Product.objects.exclude(supply_method='').exists())
+        self.assertFalse(Product.objects.exclude(kind='raw').exclude(supply_method='').exists())
 
     def test_self_component_is_not_assigned_a_route(self):
         import_catalog(workbook([('Soba', [

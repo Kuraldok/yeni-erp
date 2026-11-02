@@ -12,7 +12,7 @@ from django.urls import reverse
 from django.views.decorators.vary import vary_on_headers
 from .models import Product, Partner, Order, OrderLine, StockMovement, ProductionJob, ProductionRoute, MaterialRecipe, MaterialRequirement, stock_balance
 from .registry import MODULES, READ_ONLY_MODELS
-from .products import main_products, order_product_cards
+from .products import main_products, order_product_cards, manual_stock_products
 from .product_details import product_detail_context
 from .group_filters import available_groups, can_filter_groups, filter_by_group
 from .templatetags.erp_numbers import requirement_list_amount, count_amount
@@ -223,6 +223,8 @@ def edit(request, slug, pk=None):
     quantity_field = 'minimum_stock' if model is Product else 'quantity' if model in (StockMovement,ProductionJob,ConsumptionRecipeLine) else ''
     product_units = {}
     if model is StockMovement:
+        form.fields['product'].queryset = manual_stock_products(form.fields['product'].queryset)
+        form.fields['product'].help_text = 'Yarı mamuller manuel seçilemez. Yarı mamul stok giriş ve tüketimleri üretim işlemlerinden oluşur.'
         product_units = {str(pk):unit for pk,unit in form.fields['product'].queryset.values_list('pk','unit')}
     if quantity_field:
         unit = product_units.get(request.POST.get('product',''),'') if model is StockMovement else request.POST.get('unit','') if request.method == 'POST' else form.initial.get('unit','')

@@ -5,7 +5,7 @@ from erp.routing import apply_component_routes
 
 
 class Command(BaseCommand):
-    help = 'Tanımlı kategori kurallarına göre bileşen üretim/temin rotalarını ekler; var olan rotaları ezmez.'
+    help = 'Bileşen üretim rotalarını ve hammaddelerin dış temin rotalarını uygular; eski rota adımlarını ve açık işleri korur.'
 
     def handle(self,*args,**options):
         try:

@@ -120,7 +120,7 @@ class InventoryAuditTests(TestCase):
         self.assertEqual(response.status_code,200)
         self.assertFalse(Order.objects.filter(number='BAD-WEB').exists())
         self.assertContains(response,'tam sayı')
-        response=self.client.post(reverse('create',args=['stok']),{'product':self.semi.pk,'warehouse':self.source.pk,'kind':'in','quantity':'1.5','note':'Hatalı adet'})
+        response=self.client.post(reverse('create',args=['stok']),{'product':self.main.pk,'warehouse':self.source.pk,'kind':'in','quantity':'1.5','note':'Hatalı adet'})
         self.assertContains(response,'tam sayı')
         self.assertFalse(StockMovement.objects.exists())
 
