@@ -1,0 +1,7 @@
+{% load erp_numbers %}
+<div data-product-content data-product-id="{{ product.pk }}">
+<a href="{% url 'listing' 'stok-kartlari' %}" data-product-list>← Stok kartları</a>
+<div class="page-heading"><div><p class="eyebrow">{{ product.get_kind_display }}</p>{% if embedded %}<h2 class="product-title">{{ product.code }} · {{ product.name }}</h2>{% else %}<h1>{{ product.code }} · {{ product.name }}</h1>{% endif %}</div>{% if perms.erp.change_product %}<a class="button" href="{% url 'edit' 'stok-kartlari' product.pk %}">Stok kartını düzenle</a>{% endif %}</div>
+<section class="panel"><p>Birim: {{ product.get_unit_display|default:'Tanımlanmadı' }} · Asgari stok: {{ product.minimum_stock|count_amount:product.unit|default_if_none:'—' }} · {{ product.active|yesno:'Aktif,Pasif' }}</p><p>Ürün grubu: {{ product.category|default:'—' }} · Üretim alanı: {{ product.get_production_area_display|default:'—' }}</p></section>
+{% include 'erp/stock_balances.html' %}
+</div>

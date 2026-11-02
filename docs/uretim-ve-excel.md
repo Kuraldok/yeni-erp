@@ -155,7 +155,7 @@ Excel aktarım raporunun satır, sayfa ve güncel inceleme sayıları seçilen g
 
 ## Üretim ve stok bağlantısı
 
-1. **Stok kartlarında** çıktı ve girdilerin birimlerini açıkça tanımlayın. Adet miktarları tam sayı olmalıdır. **Stok hareketleri** ekranında açılış stoğunu doğru depoya girin.
+1. **Stok kartları → Ayrıntılar** üzerinden ana ürünün kartını açın. Girdiler için kart bağlantısı bulunan bileşenin koduna veya adına tıklayın. **Stok kartını düzenle** ile çıktı ve girdilerin birimlerini açıkça tanımlayın. Adet miktarları tam sayı olmalıdır. **Stok hareketleri** ekranında açılış stoğunu doğru depoya girin.
 2. **Stok tüketim reçeteleri → Yeni kayıt** yoluyla bir yarı mamul veya mamul için reçete oluşturun. Alternatif olarak kaynak **Ürün reçeteleri → Ayrıntılar → Stok tüketim kopyası oluştur** düğmesini kullanın. Kaynak Excel satırları ve kodları korunur.
 3. **Girdi ekle** veya **Eşleştir / düzenle** ile bir çıktı için doğrudan tüketilecek stok kartlarını, miktar ve birimi tanımlayın. Izgara'nın kodsuz hammaddesini mevcut hammadde kartına burada bağlayın. Üst ürünün düz Excel tablosunda yer alsa bile bu üretimde doğrudan tüketilmeyen satırın **Bu üretimde tüketilir** seçimini kaldırın. Üst ürüne verilen hammaddenin yarı mamullere dağılımı bilinmiyorsa tahmin etmeyin; her yarı mamulün gerçek tüketimini ayrıca tanımlayın.
 4. Reçete başlığını düzenleyip **Girdiler bu ürünün doğrudan tüketimidir** seçimini işaretleyerek doğrulayın. Eksik kart, miktar veya uyuşmayan birim varsa doğrulama reddedilir. Girdi değişince yeniden doğrulama gerekir. Kullanılmış sürümü değiştirmek yerine yeni sürüm açın.

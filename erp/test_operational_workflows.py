@@ -103,11 +103,12 @@ class OperationalWorkflowTests(TestCase):
         recipe=ConsumptionRecipe.objects.create(product=self.main,name='Pasif çıktı',unit='adet')
         with self.assertRaises(ValidationError):validate_consumption_recipe(recipe)
 
-    def test_stock_cards_expose_components_without_changing_main_product_list(self):
+    def test_stock_cards_list_main_products_and_preserve_component_access(self):
         main=self.client.get(reverse('listing',args=['urunler']))
         stock=self.client.get(reverse('listing',args=['stok-kartlari']))
         self.assertNotIn(self.raw.pk,{r['pk'] for r in main.context['rows']})
-        self.assertIn(self.raw.pk,{r['pk'] for r in stock.context['rows']})
+        self.assertEqual({r['pk'] for r in stock.context['rows']},{r['pk'] for r in main.context['rows']})
+        self.assertNotIn(self.raw.pk,{r['pk'] for r in stock.context['rows']})
         self.assertEqual(self.client.get(reverse('stock_card_detail',args=[self.raw.pk])).status_code,200)
         self.assertEqual(self.client.get(reverse('edit',args=['stok-kartlari',self.raw.pk])).status_code,200)
 

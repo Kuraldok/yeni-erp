@@ -3,22 +3,22 @@
 {% block title %}{{ title }} · Kural Döküm{% endblock %}
 {% block content %}
 <div class="page-heading">
-  <div><p class="eyebrow">KAYIT YÖNETİMİ</p><h1>{{ title }}</h1><p class="muted">{{ page.paginator.count }} {% if slug == 'urunler' %}ana ürün{% else %}kayıt{% endif %}</p></div>
+  <div><p class="eyebrow">KAYIT YÖNETİMİ</p><h1>{{ title }}</h1><p class="muted">{{ page.paginator.count }} {% if is_product_list %}ana ürün{% else %}kayıt{% endif %}</p></div>
   {% if slug == 'excel-aktarimlari' and perms.erp.add_catalogimport %}<a class="button" href="{% url 'catalog_upload' %}">Excel aktar</a>{% endif %}
   {% if slug == 'stok-belgeleri' and perms.erp.add_stockdocument %}<a class="button" href="{% url 'create_stock_document' %}">+ Yeni stok belgesi</a>{% endif %}
   {% if can_add %}<a class="button" href="{% url 'create' slug %}{% if order_filter %}?order={{ order_filter|urlencode }}{% elif recipe_filter %}?recipe={{ recipe_filter|urlencode }}{% endif %}">{% if slug == 'siparisler' %}Yeni Sipariş{% else %}+ Yeni kayıt{% endif %}</a>{% endif %}
 </div>
-{% if slug == 'urunler' %}
-<p class="notice">Bu listede ana ürünler yer alır. <a href="{% url 'listing' 'stok-kartlari' %}">Tüm stok kartları →</a> Ürün kodu, adı veya Ayrıntılar bağlantısıyla ürün ayrıntılarını sayfa içindeki sekmelerde açabilirsiniz.</p>
+{% if is_product_list %}
+<p class="notice">Bu listede ana ürünler yer alır. {% if slug == 'urunler' %}<a href="{% url 'listing' 'stok-kartlari' %}">Stok kartları →</a>{% endif %} Ürün kodu, adı veya Ayrıntılar bağlantısıyla ürün ayrıntılarını sayfa içindeki sekmelerde açabilirsiniz.</p>
 {% elif slug == 'stok' %}
 <p class="notice">Stok hareketleri değiştirilemez veya silinemez. Düzeltme için açıklama yazarak ters yönde yeni hareket kaydedin.</p>
 {% elif slug == 'siparisler' or slug == 'siparis-kalemleri' %}
 <p class="notice">Sipariş ve kalemlerini Yeni Sipariş ekranında birlikte girebilir veya Sipariş kalemleri ekranını kullanabilirsiniz. Satışta ana ürünler, satın almada hammaddeler seçilir. Tutarlar KDV hariçtir. Sipariş durumu stokları otomatik değiştirmez.</p>
 {% endif %}
-{% if slug == 'urunler' %}
+{% if is_product_list %}
 <div class="product-workspace" data-product-workspace>
   <div class="product-workspace-tabs" role="tablist" aria-label="Açık ürün kartları" data-product-tablist hidden>
-    <button type="button" id="product-list-tab" role="tab" aria-selected="true" aria-controls="product-list-panel" data-product-list-tab>Ürün listesi</button>
+    <button type="button" id="product-list-tab" role="tab" aria-selected="true" aria-controls="product-list-panel" data-product-list-tab>{% if slug == 'stok-kartlari' %}Stok listesi{% else %}Ürün listesi{% endif %}</button>
   </div>
   <div id="product-list-panel" data-product-list-panel>
 {% endif %}
@@ -27,7 +27,7 @@
   <form method="get" class="search">
     {% if order_filter %}<input type="hidden" name="order" value="{{ order_filter }}">{% endif %}{% if recipe_filter %}<input type="hidden" name="recipe" value="{{ recipe_filter }}">{% endif %}
     <div class="filters">
-      <div class="filter-field"><label for="q">Kayıtlarda ara</label><input id="q" name="q" value="{{ q }}" placeholder="{% if slug == 'urunler' %}Ana ürün kodu veya adı…{% else %}Metin alanlarında arayın…{% endif %}"></div>
+      <div class="filter-field"><label for="q">Kayıtlarda ara</label><input id="q" name="q" value="{{ q }}" placeholder="{% if is_product_list %}Ana ürün kodu veya adı…{% else %}Metin alanlarında arayın…{% endif %}"></div>
       {% include 'erp/group_filter_control.html' %}
       <button class="button secondary">Filtrele</button>
       {% if q or category %}<a href="{% url 'listing' slug %}">Temizle</a>{% endif %}
@@ -36,8 +36,8 @@
   <div class="table-wrap"><table>
     <thead><tr>{% for header in headers %}<th>{{ header|capfirst }}</th>{% endfor %}{% if can_edit or has_detail or can_cancel %}<th>İşlem</th>{% endif %}</tr></thead>
     <tbody>{% for row in rows %}<tr>
-      {% for value in row.values %}<td>{% if row.product_detail and forloop.counter <= 2 %}<a href="{{ row.product_detail }}" {% if slug == 'urunler' %}data-product-open data-product-id="{{ row.pk }}" data-product-code="{{ row.values.0 }}" title="Ürün ayrıntılarını sayfa içinde aç"{% else %}target="_blank" rel="noopener"{% endif %}>{{ value|default_if_none:'—' }}</a>{% else %}{{ value|default_if_none:'—' }}{% endif %}</td>{% endfor %}
-      {% if can_edit or has_detail or can_cancel %}<td>{% if row.detail %}<a href="{{ row.detail }}" {% if slug == 'urunler' %}data-product-open data-product-id="{{ row.pk }}" data-product-code="{{ row.values.0 }}"{% elif row.product_detail %}target="_blank" rel="noopener"{% endif %}>Ayrıntılar {% if row.product_detail and slug != 'urunler' %}↗{% else %}→{% endif %}</a>{% endif %}{% if row.release_url %}<a href="{{ row.release_url }}">Serbest bırak</a>{% endif %}{% if row.cancel_url %} <a href="{{ row.cancel_url }}">İptal et</a>{% endif %}{% if can_edit and row.editable %} <a href="{% url 'edit' slug row.pk %}">Düzenle</a>{% endif %}</td>{% endif %}
+      {% for value in row.values %}<td>{% if row.product_detail and forloop.counter <= 2 %}<a href="{{ row.product_detail }}" {% if is_product_list %}data-product-open data-product-id="{{ row.pk }}" data-product-code="{{ row.values.0 }}" title="Ürün ayrıntılarını sayfa içinde aç"{% endif %}>{{ value|default_if_none:'—' }}</a>{% else %}{{ value|default_if_none:'—' }}{% endif %}</td>{% endfor %}
+      {% if can_edit or has_detail or can_cancel %}<td>{% if row.detail %}<a href="{{ row.detail }}" {% if is_product_list %}data-product-open data-product-id="{{ row.pk }}" data-product-code="{{ row.values.0 }}"{% endif %}>Ayrıntılar →</a>{% endif %}{% if row.release_url %}<a href="{{ row.release_url }}">Serbest bırak</a>{% endif %}{% if row.cancel_url %} <a href="{{ row.cancel_url }}">İptal et</a>{% endif %}{% if can_edit and row.editable %} <a href="{% url 'edit' slug row.pk %}">Düzenle</a>{% endif %}</td>{% endif %}
     </tr>{% empty %}<tr><td colspan="12" class="empty">{% if q or category %}Filtrelerle eşleşen kayıt bulunamadı.{% else %}Henüz kayıt yok. Yetkiniz varsa “{% if slug == 'siparisler' %}Yeni Sipariş{% else %}Yeni kayıt{% endif %}” ile başlayabilirsiniz.{% endif %}</td></tr>{% endfor %}</tbody>
   </table></div>
   <div class="pagination">
@@ -46,7 +46,7 @@
     {% if page.has_next %}<a href="?page={{ page.next_page_number }}&amp;q={{ q|urlencode }}&amp;category={{ category|urlencode }}{% if order_filter %}&amp;order={{ order_filter|urlencode }}{% endif %}{% if recipe_filter %}&amp;recipe={{ recipe_filter|urlencode }}{% endif %}">Sonraki →</a>{% endif %}
   </div>
 </section>
-{% if slug == 'urunler' %}
+{% if is_product_list %}
   </div>
   <div data-product-panels></div>
 </div>

@@ -13,6 +13,7 @@ from django.views.decorators.vary import vary_on_headers
 from .models import Product, Partner, Order, OrderLine, StockMovement, ProductionJob, ProductionRoute, MaterialRecipe, MaterialRequirement, stock_balance
 from .registry import MODULES, READ_ONLY_MODELS
 from .products import main_products, order_product_cards
+from .product_details import product_detail_context
 from .group_filters import available_groups, can_filter_groups, filter_by_group
 from .templatetags.erp_numbers import requirement_list_amount, count_amount
 from .models import ConsumptionRecipe, ConsumptionRecipeLine, AuditEvent, QuantityReview, ProductionPosting
@@ -62,7 +63,7 @@ def listing(request, slug):
     can_filter = can_filter_groups(request.user, model)
     groups = available_groups(request.user) if can_filter else []
     if model is Product:
-        qs = main_products() if slug=='urunler' else Product.objects.all()
+        qs = main_products()
         qs = qs.prefetch_related('materialrecipe_set')
     qs = filter_by_group(qs, category, request.user)
     order_filter = ''
@@ -134,7 +135,7 @@ def listing(request, slug):
             editable=not obj.recipe.locked
         cancel_url = reverse('cancel_order_line',args=[obj.pk]) if model is OrderLine and editable and request.user.has_perm('erp.cancel_orderline') else ''
         rows.append({'pk':obj.pk, 'values':values,'detail':detail,'editable':editable,'cancel_url':cancel_url,'product_detail':detail if model is Product else '', 'release_url':reverse('release_stockreservation',args=[obj.pk]) if slug=='rezervasyonlar' and obj.state=='active' and obj.order_line_id and request.user.has_perm('erp.release_stockreservation') else ''})
-    return render(request,'erp/list.html', {'title':title,'slug':slug,'has_detail':slug in ['stok-kartlari','stok-belgeleri','siparisler','urunler','rotalar','receteler','excel-aktarimlari','uretim-akislari','uretim-isleri','tuketim-receteleri','islem-gecmisi','uretim-stok-fisleri'],'headers':headers,'rows':rows,'page':page,'q':search,'groups':groups,'category':category,'can_filter_groups':can_filter,'order_filter':order_filter,'selected_order':selected_order,'recipe_filter':recipe_filter,'can_cancel':(model is OrderLine and request.user.has_perm('erp.cancel_orderline')) or slug=='rezervasyonlar','can_add':model not in READ_ONLY_MODELS and permitted(request.user,'add',model),'can_edit':model not in READ_ONLY_MODELS and model is not StockMovement and permitted(request.user,'change',model)})
+    return render(request,'erp/list.html', {'title':title,'slug':slug,'is_product_list':model is Product,'has_detail':slug in ['stok-kartlari','stok-belgeleri','siparisler','urunler','rotalar','receteler','excel-aktarimlari','uretim-akislari','uretim-isleri','tuketim-receteleri','islem-gecmisi','uretim-stok-fisleri'],'headers':headers,'rows':rows,'page':page,'q':search,'groups':groups,'category':category,'can_filter_groups':can_filter,'order_filter':order_filter,'selected_order':selected_order,'recipe_filter':recipe_filter,'can_cancel':(model is OrderLine and request.user.has_perm('erp.cancel_orderline')) or slug=='rezervasyonlar','can_add':model not in READ_ONLY_MODELS and permitted(request.user,'add',model),'can_edit':model not in READ_ONLY_MODELS and model is not StockMovement and permitted(request.user,'change',model)})
 
 
 @login_required
@@ -143,49 +144,8 @@ def product_detail(request, pk):
     if not request.user.has_perm('erp.view_product'):
         raise PermissionDenied
     product = get_object_or_404(main_products().prefetch_related('materialrecipe_set'), pk=pk)
-    group_names = {r.sheet for r in product.materialrecipe_set.all() if r.sheet}
-    if product.category:
-        group_names.add(product.category)
-    from .routing import is_grill_category
-    is_grill = any(is_grill_category(name) for name in group_names)
-    direct_routes = product.productionroute_set.filter(active=True).select_related('flow') if request.user.has_perm('erp.view_productionroute') else []
-    can_view_components = all(request.user.has_perm('erp.' + permission) for permission in (
-        'view_materialrecipe', 'view_materialrequirement',
-    ))
-    tab = request.GET.get('tab', 'components' if can_view_components else 'overview')
-    if tab not in ('overview', 'components'):
-        raise Http404
-    if tab == 'components' and not can_view_components:
-        raise PermissionDenied
-    recipes = []
-    selected_recipe = None
-    sections = []
-    if can_view_components:
-        recipes = list(MaterialRecipe.objects.filter(product=product).select_related('source').order_by('-source_id', 'sheet', 'pk'))
-        selected = request.GET.get('recipe', '')
-        if selected:
-            selected_recipe = next((r for r in recipes if str(r.pk) == selected), None)
-            if selected_recipe is None:
-                raise Http404
-        elif recipes:
-            selected_recipe = recipes[0]
-        if selected_recipe and tab == 'components':
-            from decimal import Decimal
-            from .production import material_plan
-            from .routing import is_semifinished_component
-            rows, _ = material_plan(selected_recipe, Decimal('1'))
-            sections = [
-                {'title': 'Yarı mamuller', 'rows': [r for r in rows if is_semifinished_component(r['line'].component_kind, r['line'].sheet)]},
-                {'title': 'Hammaddeler', 'rows': [r for r in rows if r['line'].component_kind == 'Hammadde']},
-                {'title': 'Diğer bileşenler', 'rows': [r for r in rows if r['line'].component_kind != 'Hammadde' and not is_semifinished_component(r['line'].component_kind, r['line'].sheet)]},
-            ]
-    embedded = request.headers.get('X-Product-Tab') == '1'
-    return render(request, 'erp/product_content.html' if embedded else 'erp/product.html', {
-        'product': product, 'tab': tab, 'can_view_components': can_view_components,
-        'recipes': recipes, 'selected_recipe': selected_recipe, 'sections': sections,
-        'slug': 'urunler', 'display_group': ', '.join(sorted(group_names)) or '—',
-        'is_grill': is_grill, 'direct_routes': direct_routes, 'embedded': embedded,
-    })
+    context = product_detail_context(request, product)
+    return render(request, 'erp/product_content.html' if context['embedded'] else 'erp/product.html', context)
 
 @login_required
 @transaction.atomic

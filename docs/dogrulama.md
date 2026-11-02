@@ -37,3 +37,12 @@
 - Chromium'da ayrı sentetik veritabanıyla kod/ad/Ayrıntılar bağlantıları, aynı ürünün tekrar seçilmesi, sekme kapatma, klavye kullanımı, ürün bilgileri ve bileşen geçişleri, reçete sürümü seçimi, başarısız isteği yeniden deneme doğrulandı. Listeye dönüldüğünde arama, grup filtresi, sayfa, dikey ve tablo içi yatay kaydırma konumları korundu.
 - Masaüstü ve mobil ekran boyutlarında sayfa taşması veya JavaScript hatası görülmedi. JavaScript kapalıyken ayrıntıların aynı tarayıcı sekmesinde açıldığı kontrol edildi.
 - Geliştirme veritabanının dosya özeti değişmedi. Çalışma geliştirme ortamında tamamlandı; bu adımda GitHub'a aktarım veya canlı dağıtım yapılmadı.
+
+## Stok kartlarında ana ürün görünümü — 2 Kasım 2026
+
+- Geçici veritabanıyla 213 test geçti; Django kontrolü ve migration tutarlılığı başarılı. Şema değişikliği gerekmedi.
+- Stok kartları listesi ürün kartlarıyla aynı ana ürünleri, grup/kod sıralamasını, filtreleri ve sayfalamayı kullanıyor. Yarı mamul, hammadde, parça ve yalnız bileşen olan Mamul kartları ana listede gösterilmiyor; kaynak kayıtları korunuyor.
+- Ortak ayrıntı görünümünde ürün bilgileri, reçete sürümleri ve bileşenler doğrulandı. Stok ekranındaki ek depo bakiyeleri bölümünde fiziksel/ayrılmış/serbest miktar ve bilinen maliyetler korundu; ürün, reçete, stok ve rezervasyon izinleri ayrıca sınandı.
+- Chromium'da ayrı sentetik veritabanıyla liste → ürün sekmesi → depo bakiyeleri → bileşen kartı → listeye dönüş akışı tamamlandı. Kod/ad/Ayrıntılar bağlantıları, sekme kapatma, tekrar seçim, klavye kullanımı, reçete değiştirme, hata sonrası yeniden deneme ve JavaScript kapalı kullanım kontrol edildi.
+- Listeye dönüşte arama, grup, sayfa ve kaydırma konumları korundu. Masaüstü/mobil ekran boyutlarında sayfa taşması veya JavaScript hatası görülmedi. Bileşen düzenleme adresleri ve stok/üretim seçimleri korunuyor.
+- Geliştirme veritabanının dosya özeti değişmedi; test kayıtları yalnızca geçici veritabanında oluşturuldu. Çalışma geliştirme ortamında tamamlandı.

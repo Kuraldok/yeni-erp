@@ -7,6 +7,9 @@ from django.db import IntegrityError, OperationalError, transaction
 from django.forms import formset_factory
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.views.decorators.vary import vary_on_headers
+from .product_details import product_detail_context
+from .products import main_products
 from .models import (Order, OrderLine, Product, ProductionJob, ProductionPosting,
     StockDocument, StockDocumentLine, StockMovement, StockReservation, Warehouse, stock_balance)
 from .stock import (available_stock, document_number, post_document, release_reservation,
@@ -121,16 +124,28 @@ def document_detail(request,pk):
     return render(request,'erp/document_detail.html',{'document':document,'lines':document.lines.select_related('product','order_line'),'movements':moves,'reason_form':reason_form,'slug':'stok-belgeleri'})
 
 
+def stock_card_rows(user,product):
+    rows=[]
+    if user.has_perm('erp.view_stockmovement') and user.has_perm('erp.view_warehouse'):
+        for warehouse in Warehouse.objects.all():
+            can_reserve=user.has_perm('erp.view_stockreservation')
+            rows.append({'warehouse':warehouse,'quantity':stock_balance(product,warehouse),'reserved':reserved_stock(product,warehouse) if can_reserve else None,'available':available_stock(product,warehouse) if can_reserve else None,'valuation':valuation(product,warehouse)})
+    return rows
+
+
 @login_required
+@vary_on_headers('X-Product-Tab')
 def stock_card(request,pk):
     permissions(request.user,'view_product')
-    product=get_object_or_404(Product,pk=pk)
-    rows=[]
-    if request.user.has_perm('erp.view_stockmovement') and request.user.has_perm('erp.view_warehouse'):
-        for warehouse in Warehouse.objects.all():
-            can_reserve=request.user.has_perm('erp.view_stockreservation')
-            rows.append({'warehouse':warehouse,'quantity':stock_balance(product,warehouse),'reserved':reserved_stock(product,warehouse) if can_reserve else None,'available':available_stock(product,warehouse) if can_reserve else None,'valuation':valuation(product,warehouse)})
-    return render(request,'erp/stock_card.html',{'product':product,'rows':rows,'slug':'stok-kartlari'})
+    product=get_object_or_404(Product.objects.prefetch_related('materialrecipe_set'),pk=pk)
+    embedded=request.headers.get('X-Product-Tab')=='1'
+    if main_products().filter(pk=pk).exists():
+        context=product_detail_context(request,product,stock_card=True)
+        if context['tab']=='stock':context['stock_rows']=stock_card_rows(request.user,product)
+        return render(request,'erp/product_content.html' if embedded else 'erp/product.html',context)
+    return render(request,'erp/stock_card_content.html' if embedded else 'erp/stock_card.html',{
+        'product':product,'rows':stock_card_rows(request.user,product),'slug':'stok-kartlari','embedded':embedded,
+    })
 
 
 @login_required
