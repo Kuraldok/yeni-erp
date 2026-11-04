@@ -194,9 +194,17 @@ Dökümde Pik seçilmiş bir işin tüketim reçetesinde etkin Alüminyum varsa 
 
 Satış siparişini açıp **Üretim, teslimat ve kalan miktar takibi** bağlantısını kullanın. Kalemden aynı mamul için iş emri açın. Üretilen mamul kalan satış ihtiyacı kadar ayrılır. **Stok belgeleri** ekranında onaylı sipariş ve kalem seçerek teslimat fişi hazırlayın; doğru çıkış deposunu seçip taslağı işleyin. Kısmi teslimat açık miktarı azaltır. Tüm kalemler tamamlanmadan sipariş elle kapatılamaz. Mal kabul aynı akışı satın alma ve giriş deposuyla uygular.
 
+Taslaktan çıkarılan kalemler geçmişte saklanır; teslim/kabul miktarı, kalan miktar, siparişin tamamlanması ve rapor/CSV hesaplarına katılmaz. Örneğin 5 adet siparişte eski 3 adetlik taslak kalem çıkarılıp 2 adetlik kalem işlenirse teslim edilen 2, kalan 3 olur.
+
+Teslimat sonrasında sipariş rezervasyonları bütün depolarda kalan ihtiyaca göre kontrol edilir. A deposunda ayrılmış 5 adet yerine B deposundan 2 adet teslim edilirse A'da 3 adet ayrılmış kalır; tamamı B'den teslim edilirse A'daki rezervasyon bırakılır. Eski rezervasyonlar öncelikle korunur, ihtiyaç fazlası azaltılır veya gerekçeli bırakılır. Başka siparişlerin ve üretim işlerinin rezervasyonları değiştirilmez; önceki değerler işlem geçmişinde tutulur.
+
+İşlerin **Önce tamamlanacak işler** bağlantıları döngü oluşturamaz. A işi B'yi bekliyorsa B'nin A'yı doğrudan veya başka işler üzerinden beklemesi kaydedilmez. Başlatılmış, tamamlanmış veya iptal edilmiş işin bağlantıları değiştirilemez. Önceki işin tamamlanması hem başlangıçta hem her aşama ilerlemesinde kontrol edilir; eski bir tutarsızlık varsa ilerleme durdurulur ve önceki işin durumu düzeltilir.
+
 ## Üretim düzeltmesi ve maliyet
 
 İşlenmiş üretim partisinin ayrıntısında **Ters üretim fişi oluştur** seçeneği vardır. Gerekçe zorunludur. Sağlam ürün çıkışı ve o partinin gerçek girdilerinin iadesi aynı işlemde olur. Başka siparişe ayrılmış veya depoda bulunmayan ürün çıkarılamaz; önce gerekli teslimatı ters fişle düzeltin ve rezervasyonu bırakın. Özgün parti geçmişte korunur. İş tamamlanmışsa son aşama yeniden açılır; iptal edilmiş işin durumu değiştirilmez. Tekrar ters çevirme ikinci hareket üretmez.
+
+Bu üretimi bekleyen bir iş başlamış veya tamamlanmışsa ters üretim fişi oluşturulmaz; uyarıda ilgili iş numaraları gösterilir. Önce bağlı çalışan işi iptal edin veya bağlı üretimin fişlerini uygun sırayla düzeltin. Bağlı iş taslakta ya da iptal edilmişse mevcut stok kontrolleriyle ters işlem yapılabilir. Daha önce oluşturulmuş aynı ters fiş yeniden istenirse yeni hareket oluşturulmadan mevcut fiş döner.
 
 Üretim maliyetinin hesaplanması için hammadde giriş fiyatları bilinmelidir. Kaynak Excel'de olmayan fiyat tahmin edilmez. İşçilik ve diğer üretim giderleri parti bazında TL girilir. Fire dahil gerçek malzeme tüketimi maliyete girer; sağlam ürün varsa toplam maliyet sağlam miktara dağıtılır. Hiç sağlam ürün yoksa kayıp maliyeti parti raporunda kalır, mamul girişi yapılmaz. Geri kazanılmış hurda için otomatik stok kartı veya değer üretilmez.
 

@@ -162,3 +162,7 @@ Ters çıkışta özgün fişin maliyeti güncel stok ortalamasından farklıysa
 - Ana panel kritik stokları önce gösterir. **Kritik stoklar** ekranı bütün asgari stok altı kartları grup filtresiyle sayfalar; eşik, tüm depoların fiziksel toplamına uygulanır.
 - **Stok belgeleri → Ayrıntılar** ekranında taslak düzenlenebilir veya gerekçeyle iptal edilebilir. Çıkarılan kalemler silinmez ve işlenmez; iptal eden ve zamanı kaydedilir. Güncelliğini kaybetmiş düzenleme/iptal/işleme istekleri reddedilir. İşlenmiş belgeye düzeltme ters fişle yapılır.
 - Rapor ekranları 50 kayıtla sayfalanır; **CSV indir** bütün filtrelenmiş kayıtları içerir. Stok kartının depo hesapları ve raporlar toplu sorgularla hazırlanır.
+
+Teslimat ve mal kabul miktarları yalnızca işlenmiş fişlerin **etkin** kalemlerinden hesaplanır; taslaktan çıkarılmış kalemler sipariş takibine ve raporlara katılmaz. Teslimat başka depodan yapılsa da siparişe ait bütün depolardaki rezervasyonların toplamı kalan ihtiyacı aşmaz. Fazla rezervasyon kullanıcı, zaman ve fiş gerekçesiyle bırakılır; kısmi teslimatta gerekli miktar korunur.
+
+Üretim işlerinde kendini bekleme ve dolaylı bağımlılık döngüsü kaydedilemez. Başlatılmış işin önceki iş bağlantıları korunur. Bu üretime bağlı başlamış veya tamamlanmış iş varsa önceki üretim ters çevrilemez; önce bağlı işler düzeltilir. Ön koşullar her aşama ilerlemesinde yeniden kontrol edilir. Bu kurallar mevcut iş ve fiş geçmişini yeniden yazmaz.

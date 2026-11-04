@@ -41,6 +41,11 @@ def advance_job(job_id, actor, expected, actual_quantity=None, **batch):
     pending=job.steps.filter(completed_at__isnull=True).order_by('sequence').first()
     token='start' if job.state=='draft' else str(pending.pk) if pending else ''
     if expected!=token: raise ValidationError('İş emrinin aşaması değişti. Güncel durumu kontrol edin; işlem tekrarlanmadı.')
+    previous=list(job.preceding_jobs.select_for_update().order_by('pk'))
+    if any(p.pk==job.pk or p.state!='completed' for p in previous):
+        raise ValidationError('Bağlı ahşap/döküm işleri tamamlanmadan bu iş başlatılamaz veya ilerletilemez.')
+    if previous and job.flow.area!='shared':
+        raise ValidationError('Önceki işler yalnızca ortak montaj/paketleme akışına bağlanabilir.')
     if job.state=='draft':
         job.full_clean()
         if not job.route_id and job.flow.area!='shared':
@@ -56,11 +61,6 @@ def advance_job(job_id, actor, expected, actual_quantity=None, **batch):
             _,problems=material_plan(job.recipe,job.quantity)
             if problems:
                 raise ValidationError('Reçetede eksik veya çelişkili bilgi var. Kaynak Excel düzeltilip tekrar aktarılmadan başlatılamaz.')
-        previous=list(job.preceding_jobs.select_for_update().all())
-        if any(p.pk==job.pk or p.state!='completed' for p in previous):
-            raise ValidationError('Bağlı ahşap/döküm işleri tamamlanmadan bu iş başlatılamaz.')
-        if previous and job.flow.area!='shared':
-            raise ValidationError('Önceki işler yalnızca ortak montaj/paketleme akışına bağlanabilir.')
         if job.stock_mode == 'inventory':
             from .inventory import prepare_production_inputs
             prepare_production_inputs(job)

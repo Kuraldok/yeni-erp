@@ -74,7 +74,7 @@ def movement_cost(product,warehouse,quantity):
 
 def fulfilled_quantity(line):
     kind='delivery' if line.order.kind=='sale' else 'receipt'
-    return StockDocumentLine.objects.filter(order_line=line,document__kind=kind,document__status='posted').exclude(
+    return StockDocumentLine.objects.filter(order_line=line,active=True,document__kind=kind,document__status='posted').exclude(
         document__reversal_document__status='posted').aggregate(total=Sum('quantity'))['total'] or ZERO
 
 
@@ -107,6 +107,23 @@ def consume_reservations(product,warehouse,quantity,*,job_id=None,order_line_id=
 def release_job_reservations(job,reason):
     for reservation in job.reservations.filter(state='active'):
         reservation.state='released';reservation.reason=reason;reservation.save()
+
+
+def trim_order_reservations(line, reason):
+    """Caller holds the order, warehouse and product locks for these reservations."""
+    remaining = line.remaining_quantity
+    for reservation in line.reservations.select_for_update().filter(state='active').order_by('pk'):
+        keep = min(remaining, reservation.quantity)
+        remaining -= keep
+        if keep == reservation.quantity:
+            continue
+        if keep:
+            reservation.quantity = keep
+        else:
+            reservation.state = 'released'
+        reservation.reason = reason
+        reservation._audit_reason = reason
+        reservation.save()
 
 
 @with_actor
@@ -213,12 +230,20 @@ def post_document(document_id,actor,expected_revision=None):
     if document.status=='posted':return document
     if expected_revision is not None and document.revision!=expected_revision:
         raise ValidationError('Taslak başka bir işlemde değişti. İşlemeden önce güncel taslağı tekrar inceleyin.')
+    order_lines = {}
     if document.order_id:
         document.order=Order.objects.select_for_update().get(pk=document.order_id)
-        list(document.order.lines.select_for_update().order_by('pk'))
+        order_lines = {line.pk: line for line in document.order.lines.select_for_update().order_by('pk')}
     lines=list(document.lines.filter(active=True).select_related('product','order_line__order'))
     warehouse_ids=[pk for pk in (document.source_warehouse_id,document.target_warehouse_id) if pk]
-    products=lock_stock(warehouse_ids,[line.product_id for line in lines])
+    product_ids = [line.product_id for line in lines]
+    reservation_line_ids = set()
+    if document.kind == 'delivery':
+        held = list(StockReservation.objects.filter(order_line_id__in=order_lines, state='active').values_list('order_line_id', 'warehouse_id', 'product_id'))
+        reservation_line_ids = {line_id for line_id, _, _ in held}
+        warehouse_ids.extend(warehouse_id for _, warehouse_id, _ in held)
+        product_ids.extend(product_id for _, _, product_id in held)
+    products=lock_stock(warehouse_ids,product_ids)
     for line in lines:line.product=products[line.product_id]
     validate_document(document,lines)
     if document.kind=='count' and any(line.baseline_quantity is None or line.baseline_quantity!=stock_balance(line.product,document.source_warehouse_id) for line in lines):
@@ -243,6 +268,9 @@ def post_document(document_id,actor,expected_revision=None):
                 cost=line.unit_cost if difference>0 and line.unit_cost is not None else average_cost(line.product,document.source_warehouse_id)
                 StockMovement.objects.create(**common,warehouse_id=document.source_warehouse_id,kind='in' if difference>0 else 'out',unit_cost=cost)
     document.status='posted';document.posted_by=actor;document.posted_at=timezone.now();document.save()
+    if document.kind == 'delivery':
+        for line_id in sorted(reservation_line_ids):
+            trim_order_reservations(order_lines[line_id], f'{document.number} · teslimat sonrası kalan ihtiyacı aşan rezervasyon bırakıldı.')
     if document.order_id and all(line.remaining_quantity==0 for line in document.order.lines.filter(status='active')):
         document.order.status='completed';document.order.save(update_fields=['status'])
     return document

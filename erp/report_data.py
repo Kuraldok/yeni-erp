@@ -174,7 +174,7 @@ def order_lines(user, category, start, end):
 
 def order_rows(user, category, start, end, lines=None):
     lines = list(order_lines(user, category, start, end) if lines is None else lines)
-    fulfilled = StockDocumentLine.objects.filter(order_line_id__in=[line.pk for line in lines], document__status='posted').filter(
+    fulfilled = StockDocumentLine.objects.filter(order_line_id__in=[line.pk for line in lines], active=True, document__status='posted').filter(
         Q(document__kind='delivery', order_line__order__kind='sale') | Q(document__kind='receipt', order_line__order__kind='purchase')
     ).exclude(document__reversal_document__status='posted').order_by().values('order_line_id').annotate(total=Sum('quantity'))
     amounts = {row['order_line_id']: row['total'] for row in fulfilled}

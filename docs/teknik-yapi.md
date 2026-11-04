@@ -108,6 +108,14 @@ Stok maliyeti depo bazında hareketli ağırlıklı ortalamadır. `StockMovement
 
 SQLite geliştirme testleri PostgreSQL eşzamanlılık garantisi sayılmaz. Canlıya geçişte eşzamanlı rezervasyon, teslimat ve üretim PostgreSQL üzerinde ayrıca doğrulanmalıdır. Bu geliştirme sunucu dağıtımı içermez.
 
+## Teslimat ve üretim bağımlılığı korumaları
+
+`fulfilled_quantity()` ve `order_rows()` yalnız `StockDocumentLine.active=True` kalemlerini toplar. Pasifleştirilmiş taslak kalemleri kaynak/geçmiş kaydı olarak kalır. `post_document()` sipariş ve kalemleri kilitledikten sonra sipariş rezervasyonlarının depolarını/ürünlerini de stok kilidine dahil eder. Bütün teslimat satırları kaydedilince `trim_order_reservations()` rezervasyonları kalan talebe indirir; eski rezervasyonları önce korur. Kısmi azaltma veya gerekçeli bırakma audit ile aynı atomik işlemde olur. İşlem başarısızsa hareket, belge durumu, rezervasyon ve audit birlikte geri alınır.
+
+`erp/production_dependencies.py`, M2M bağlantı düzenlemelerinde iş satırlarını PK sırasıyla kilitleyip güncel graf üzerinde dolaylı yolları denetler. İleri ve ters ilişki üzerinden ekleme/çıkarma/temizleme aynı korumaları kullanır. Başlatılmış bağımlı işin bağlantıları değişmez; geçerli ters ilişki düzenlemeleri de asıl bağımlı iş üzerinde audit oluşturur. Toplu ekleme veya `set()` sırasında hata, önceki bağlantıların ve audit'in korunmasını sağlar.
+
+`advance_job()` her adımda önceki işleri sıralı kilit altında kontrol eder. `reverse_production()` ve `cancel_job()` kendi iş satırı kilidi altında başlamış/tamamlanmış bağlı işi denetler. Taslak bağımlı işin başlaması aynı ön koşul satırını kilitlediği için ters işlemle birlikte eski tamamlanma durumuna dayanarak başlayamaz. Mevcut geçmiş otomatik düzeltilmez; tutarsız ön koşullu işin ilerlemesi durdurulur. Şema değişikliği gerekmez. `erp/test_four_fixes.py` teslim/kabul, farklı depo rezervasyonu, döngüler, bağlı iş ters işlemi, izinli akışlar ve atomik geri almayı sınar.
+
 `0011` ile `StockMovement.value_adjustment` ters çıkışın özgün toplam maliyeti ile güncel ortalamadan çıkan değerini ayırır. Etkin stok değeri `total_cost + value_adjustment` üzerinden hesaplanır. Özgün tutar değiştirilmez; pozitif/negatif fark ayrı raporlanır. Ortalama maliyetler karıştıktan sonra ilk veya son partinin geri alınması, kalan stoğu negatif değerle veya kaybolan bakiye ile bırakmaz. Bilinmeyen maliyette fark da bilinmiyor kalır.
 
 

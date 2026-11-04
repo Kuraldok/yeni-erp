@@ -45,19 +45,23 @@ def protect_consumption_history(sender, instance, **kwargs):
 
 
 @receiver(m2m_changed)
-def after_job_dependencies(sender, instance, action, reverse=False, **kwargs):
+def after_job_dependencies(sender, instance, action, reverse=False, pk_set=None, using='default', **kwargs):
     from .models import ProductionJob
-    if sender is not ProductionJob.preceding_jobs.through or reverse:
+    if sender is not ProductionJob.preceding_jobs.through:
         return
     if action in ('pre_add','pre_remove','pre_clear'):
-        instance._audit_dependencies = sorted(instance.preceding_jobs.values_list('pk',flat=True))
+        from .production_dependencies import prepare_dependency_change
+        instance._audit_dependencies = prepare_dependency_change(instance, action, reverse, pk_set, using)
     elif action in ('post_add','post_remove','post_clear'):
-        old = instance.__dict__.pop('_audit_dependencies',[])
-        new = sorted(instance.preceding_jobs.values_list('pk',flat=True))
-        if old != new:
+        before = instance.__dict__.pop('_audit_dependencies', {})
+        for job in ProductionJob.objects.using(using).filter(pk__in=before).order_by('pk'):
+            old = before[job.pk]
+            new = sorted(job.preceding_jobs.values_list('pk',flat=True))
+            if old == new:
+                continue
             from .audit import current_actor
             from .models import AuditEvent
             actor = current_actor()
-            AuditEvent.objects.create(actor=actor,actor_label=actor.get_username() if actor else 'Sistem / komut',action='update',
-                model_label=instance._meta.label_lower,object_id=str(instance.pk),object_label=str(instance),
+            AuditEvent.objects.using(using).create(actor=actor,actor_label=actor.get_username() if actor else 'Sistem / komut',action='update',
+                model_label=job._meta.label_lower,object_id=str(job.pk),object_label=str(job),
                 changes={'preceding_jobs':{'before':old,'after':new}})

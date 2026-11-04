@@ -75,3 +75,12 @@
 - Tekrarlı kurulum, özel rota/adım/sürelerin korunması, kaynak kapsamı, açık ana ürün/yarı mamul işleri, kategoriler arası çelişki, reçetesiz kartlar ve eksik/kendine bağlı bileşenler sınandı. Özgün kaynak hücreleri, boş miktar ve birimler değiştirilmedi; yeni stok hareketi oluşmadı.
 - Ahşap işlerinin rota/adımlarını kullanması, ürün ayrıntısında doğrudan ana ürün rotası ve Mamul etiketli yarı mamullerin gösterimi, manuel stok seçimi ve grup filtreli çelişki uyarısı Django test istemcisiyle doğrulandı.
 - Geliştirme kataloğunda ürün/reçete kaydı olmadığından `setup_component_routes` 0 yeni kayıt oluşturdu. Geliştirme veritabanının SHA-256 özeti değişmedi. Kural yeni Excel aktarımlarında otomatik uygulanır; örnek kayıtlar yalnızca geçici test veritabanında kullanıldı.
+
+## Teslimat, rezervasyon ve üretim bağımlılıkları — 4 Kasım 2026
+
+- Geçici veritabanında 291 test geçti; önceki 270 teste 21 senaryo eklendi. Django kontrolü ve migration tutarlılığı başarılı; şema değişikliği gerekmedi.
+- Normal taslak düzenleme ekranında 3 adetlik kalem çıkarılıp 2 adetlik kalem işlendi. 5 adet siparişte teslim/kabul 2, kalan 3 ve sipariş açık kaldı. Satış, satın alma, takip ekranı, rapor/CSV, sonraki gerçek teslimat ve ters fiş doğrulandı; çıkarılan satır geçmişte korundu.
+- Başka depodan tam/kısmi teslimatta rezervasyon toplamının kalan talebe inmesi, aynı belgedeki bölünmüş satırlar, eski fazla rezervasyonun son teslimatta bırakılması, diğer sipariş rezervasyonlarının korunması, kullanıcı/zaman/gerekçe ve hatada stok/belge/rezervasyon/audit'in birlikte geri alınması sınandı.
+- Kendine bağlı, doğrudan ve dolaylı döngüler; toplu ekleme, başarısız `set()`, ters ilişki, tekrarlı ekleme, geçerli ortak bağımlılıklar, başladıktan sonra bağlantı değişiklikleri ve form hatasında diğer alanların da korunması doğrulandı.
+- Bağlı çalışan/tamamlanmış iş varken ters üretim engellendi. Taslak ve iptal edilmiş bağlı işlerle izinli ters işlem, aynı ters fişin tekrarı, özgün parti ve stok geçmişi, eski tutarsız ön koşulda ilerleme/iptal koruması test edildi.
+- Geliştirme veritabanının SHA-256 özeti değişmedi; SQLite bütünlük ve yabancı anahtar kontrolleri başarılı. Örnek işlemler yalnız bellekteki test veritabanında kaldı. GitHub'a aktarım veya sunucu dağıtımı yapılmadı.

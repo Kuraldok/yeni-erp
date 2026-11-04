@@ -5,6 +5,7 @@ from django.db.models import Sum
 from django.utils import timezone
 from .audit import with_actor
 from .models import ProductionJob, ProductionPosting, StockDocument
+from .production_dependencies import ensure_no_started_following_jobs
 from .stock import (document_number, lock_order_line, refresh_job_reservations,
     release_job_reservations, require, reverse_movements)
 
@@ -19,6 +20,7 @@ def cancel_job(job_id,actor,reason):
     job=ProductionJob.objects.select_for_update().get(pk=job_id)
     if job.state=='cancelled':return job
     if job.state=='completed':raise ValidationError('Tamamlanmış üretim önce ilgili üretim fişinden ters çevrilmelidir.')
+    ensure_no_started_following_jobs(job)
     release_job_reservations(job,reason)
     job.state='cancelled';job.cancelled_by=actor;job.cancelled_at=timezone.now();job.cancellation_reason=reason
     job._audit_action='cancel';job._audit_reason=reason
@@ -39,6 +41,7 @@ def reverse_production(posting_id,actor,reason):
     posting=ProductionPosting.objects.select_for_update().get(pk=posting_id)
     existing=StockDocument.objects.filter(production_posting=posting,status='posted').first()
     if existing:return existing
+    ensure_no_started_following_jobs(job)
     reversal=StockDocument.objects.create(number=document_number('URT-TERS'),kind='production_reversal',production_posting=posting,reason=reason,created_by=actor)
     movements=list(posting.movements.select_related('product','warehouse').order_by('pk'))
     reverse_movements(movements,reversal,actor)
