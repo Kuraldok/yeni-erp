@@ -106,6 +106,8 @@ Ana ürün görünümü mevcut üst ürün ilişkilerinden belirlenir; yarı mam
 
 **Sehpa / Sehpalar** grubunda **Masa tablası** yarı mamulleri ahşap, diğer adı belli yarı mamuller döküm üretimine bağlanır. Bileşen türü **Mamul** yazılmışsa aynı rota kuralı uygulanır; kaynak etiket ve kart türü korunur. Hammaddeler, parçalar ve ana ürün için bu kuralla rota oluşturulmaz. Yeni Excel aktarımlarında otomatik uygulanır; mevcut eşleştirilmiş reçeteler için `setup_component_routes` kullanılabilir. Adı boş veya başka kategoriyle çelişen bileşenler incelemeye bırakılır; mevcut özel rota adımları korunur.
 
+**Kamelyalar ve piknik masaları** grubunda ana ürünler ve tüm yarı mamuller **Ahşap üretimi** rotasına bağlanır. Kamelya/Kamelyalar, Piknik masası/Piknik masaları ayrı adları da desteklenir. Kaynakta **Mamul** yazan bileşenler yarı mamul gibi değerlendirilir; özgün etiketleri ve kart türleri korunur. Hammaddeler dışarıdan temin edilir. Yeni Excel aktarımlarında otomatik, mevcut kartlarda `setup_component_routes` ile uygulanır. Çelişen tanımlar ve açık üretim işleri korunarak incelemeye bırakılır; miktar veya süre tahmin edilmez.
+
 ## Sipariş ve kalemleri birlikte girme
 
 1. **Siparişler → Yeni Sipariş** yolunu açın. Numarayı, türü, uygun müşteri/tedarikçiyi, tarihi ve para birimini girin.

@@ -67,3 +67,11 @@
 - Stok kartı depo bakiyesi okumaları 2 ve 22 depoda aynı üç sorguyla çalıştı; önceki incelemede 4 depoda 29 sorgu vardı. Üretim raporunda iş sayısı artınca sorgu sayısı büyümedi; sipariş teslimatları toplu hesaplandı.
 - Chromium'da ayrı sentetik veritabanıyla kart koruması → elle hammadde → kritik stok → dönem raporu/CSV → rota uyarısı/yeniden değerlendirme → taslak düzenle/kalem çıkar/işle → gerekçeli iptal akışı tamamlandı. Masaüstü/mobil sayfa taşması veya JavaScript hatası görülmedi.
 - Geliştirme ortamına `0012` uygulandı ve roller ek izinlerle güncellendi. 35 mevcut tablonun bütün özgün satırları ve eski sütun değerleri bire bir korundu; SQLite bütünlük ve yabancı anahtar denetimleri başarılı. Test hesapları ve işlem örnekleri yalnız geçici veritabanında kaldı. Canlı dağıtım yapılmadı.
+
+## Kamelyalar ve piknik masaları rota kuralı — 4 Kasım 2026
+
+- Geçici veritabanında 270 test geçti; önceki 258 teste 12 senaryo eklendi. Django kontrolü ve migration tutarlılığı başarılı; şema değişikliği gerekmedi.
+- Birleşik/ayrı ve tekil/çoğul kategori adları, Türkçe harfler ve fazla boşluklar doğrulandı. Ana ürünler, Yarı Mamul ve Mamul etiketli bileşenler dört standart ahşap adımını aldı; hammaddeler dış teminde, parçalar üretim kuralının dışında kaldı.
+- Tekrarlı kurulum, özel rota/adım/sürelerin korunması, kaynak kapsamı, açık ana ürün/yarı mamul işleri, kategoriler arası çelişki, reçetesiz kartlar ve eksik/kendine bağlı bileşenler sınandı. Özgün kaynak hücreleri, boş miktar ve birimler değiştirilmedi; yeni stok hareketi oluşmadı.
+- Ahşap işlerinin rota/adımlarını kullanması, ürün ayrıntısında doğrudan ana ürün rotası ve Mamul etiketli yarı mamullerin gösterimi, manuel stok seçimi ve grup filtreli çelişki uyarısı Django test istemcisiyle doğrulandı.
+- Geliştirme kataloğunda ürün/reçete kaydı olmadığından `setup_component_routes` 0 yeni kayıt oluşturdu. Geliştirme veritabanının SHA-256 özeti değişmedi. Kural yeni Excel aktarımlarında otomatik uygulanır; örnek kayıtlar yalnızca geçici test veritabanında kullanıldı.

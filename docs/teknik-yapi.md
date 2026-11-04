@@ -115,6 +115,12 @@ SQLite geliştirme testleri PostgreSQL eşzamanlılık garantisi sayılmaz. Canl
 
 `SEHPA_CATEGORIES`, Sehpa/Sehpalar sayfalarını ortak normalizasyonla tanır. `component_method()` Masa tablası bileşenini ahşap, diğer adı belli yarı mamulleri döküm olarak sınıflandırır. Bu kategori `accepts_finished_components()` kapsamındadır; Mamul etiketli bileşenler stok kartı türü veya kaynak etiket değiştirilmeden eşdeğer kabul edilir. Adı boş satıra yöntem tahmin edilmez. Mevcut `RULE_KEY` ve rota uygulama servisi korunmuştur; aynı kart için tekrar çalıştırma rota/adım çoğaltmaz, özel adım ve süreleri ezmez. Kategoriler arası çelişki önceki atama korunarak raporlanır.
 
+## Kamelyalar ve piknik masaları rota kuralı
+
+`OUTDOOR_WOOD_CATEGORIES` birleşik ve ayrı kategori adlarını aynı normalizasyonla tanır; `WOOD_CATEGORIES` ve Mamul eşdeğerliği bu grupları kapsar. `main_product_method()` Izgara'nın doğrudan döküm rotasını korur, yeni gruplardaki ana ürün ve açıkça Yarı mamul türündeki kartlar için ahşap rotasını seçer. Kart grubu, reçete grupları ve bileşen ilişkilerinden çıkan yöntemler birlikte değerlendirilir; çelişki halinde mevcut rota değiştirilmez. Aktarım kapsamı kaynakla sınırlıdır. Reçetesiz kartlar genel kurulum komutunda değerlendirilir; kaynak veya ihtiyaç satırı üretilmez.
+
+`RULE_KEY`, mevcut özel adımlar/süreler ve açık iş korumaları korunur. Rota uyarıları ana ürünün reçete gruplarını da içerir; farklı gruptan gelen çelişki rapor filtresinde görünür. Ürün ayrıntısı ve manuel stok seçimi ortak Mamul eşdeğerliğini kullanır. `erp/test_outdoor_wood_routes.py` kaynak koruma, kategori adları, tekrarlı kurulum, kapsam sınırı, açık işler, çelişkiler, üretim adımları ve ayrıntı ekranını doğrular. Şema değişikliği yoktur.
+
 `erp/test_sehpa_routes.py` ahşap/döküm ayrımını, tekil/çoğul ve harf/boşluk farklarını, Mamul etiketini, kapsam dışı hammadde/parça/ana ürünü, eksik adı, tekrar çalıştırmayı, özel adımları, ortak kart çelişkisini ve ürün ayrıntısındaki yarı mamul görünümünü doğrular. Yeni şema geçişi gerekmez; stok veya üretim fişi oluşturulmaz.
 
 

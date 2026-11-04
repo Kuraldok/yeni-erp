@@ -4,7 +4,7 @@ import unicodedata
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Q
 
 from .models import MaterialRecipe, MaterialRequirement, Product, ProductionFlow, ProductionRoute, RouteStep
 from .workflows import ensure_workflows
@@ -20,6 +20,7 @@ def add_route_warning(result, message, *, line=None, product=None):
         if product.category:
             categories.add(product.category)
         categories.update(MaterialRequirement.objects.filter(component=product).exclude(sheet='').values_list('sheet', flat=True))
+        categories.update(MaterialRecipe.objects.filter(product=product).exclude(sheet='').values_list('sheet', flat=True))
     result['skipped'].append(message)
     result.setdefault('warnings', []).append({'message': message, 'categories': sorted(categories),
         'product_id': product.pk if product else line.component_id if line else None,
@@ -40,9 +41,14 @@ CASTING_CATEGORIES = {normalized(name) for name in (
     'Masa ve masa ayakları', 'Masalar ve masa ayakları',
     'Döküm saksı', 'Döküm saksılar', 'Döküm saksıları',
 )}
+OUTDOOR_WOOD_CATEGORIES = {normalized(name) for name in (
+    'Kamelya', 'Kamelyalar', 'Piknik masası', 'Piknik masaları',
+    'Kamelya ve piknik masası', 'Kamelya ve piknik masaları',
+    'Kamelyalar ve piknik masası', 'Kamelyalar ve piknik masaları',
+)}
 WOOD_CATEGORIES = {normalized(name) for name in (
     'Ahşap saksı', 'Ahşap saksılar', 'Ahşap saksıları',
-)}
+)} | OUTDOOR_WOOD_CATEGORIES
 MANGAL_CATEGORIES = {normalized(name) for name in ('Mangal', 'Mangallar')}
 MANGAL_WOOD_COMPONENTS = {normalized(name) for name in (
     'Ahşap saplı kulp', 'Tel ızgara sapı',
@@ -54,6 +60,14 @@ SEHPA_WOOD_COMPONENTS = {normalized('Masa tablası')}
 
 def is_grill_category(category):
     return normalized(category) in GRILL_CATEGORIES
+
+
+def main_product_method(category):
+    if is_grill_category(category):
+        return 'casting'
+    if normalized(category) in OUTDOOR_WOOD_CATEGORIES:
+        return 'wood'
+    return None
 
 
 def is_codeless_grill_material(kind, category, code):
@@ -118,21 +132,26 @@ def apply_component_routes(source=None):
     from .products import main_products
     lines = list(MaterialRequirement.objects.select_related('component').all())
     main_ids = main_products().values('pk')
-    grill_products = {
-        pk for pk, category in Product.objects.filter(pk__in=main_ids).values_list('pk', 'category')
-        if is_grill_category(category)
-    }
-    grill_recipes = [recipe for recipe in MaterialRecipe.objects.filter(product_id__in=main_ids)
-                     if is_grill_category(recipe.sheet)]
-    grill_products.update(recipe.product_id for recipe in grill_recipes)
+    route_card_ids = Product.objects.filter(Q(pk__in=main_ids) | Q(kind='semi')).values('pk')
+    direct_methods = defaultdict(set)
+    for pk, kind, category in Product.objects.filter(pk__in=route_card_ids).values_list('pk', 'kind', 'category'):
+        method = main_product_method(category)
+        if method and (kind != 'semi' or method == 'wood'):
+            direct_methods[pk].add(method)
+    direct_recipes = []
+    for recipe in MaterialRecipe.objects.filter(product_id__in=route_card_ids).select_related('product'):
+        method = main_product_method(recipe.sheet)
+        if method and (recipe.product.kind != 'semi' or method == 'wood'):
+            direct_methods[recipe.product_id].add(method)
+            direct_recipes.append(recipe)
     affected = None
     if source is not None:
         affected = {line.component_id for line in lines if line.source_id==source.pk and component_method(line)}
-        affected.update(recipe.product_id for recipe in grill_recipes if recipe.source_id == source.pk)
+        affected.update(recipe.product_id for recipe in direct_recipes if recipe.source_id == source.pk)
     plans = defaultdict(set)
-    direct_products = grill_products if affected is None else grill_products & affected
+    direct_products = set(direct_methods) if affected is None else set(direct_methods) & affected
     for product_id in direct_products:
-        plans[product_id].add('casting')
+        plans[product_id].update(direct_methods[product_id])
     finished_components = set()
     warning_result = {'skipped': [], 'warnings': []}
     missing = warning_result['skipped']

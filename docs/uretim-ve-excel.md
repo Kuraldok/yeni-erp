@@ -108,7 +108,7 @@ Komut mevcut rotaları/adımları, elle girilmiş süreleri veya çelişen mevcu
 
 ## Diğer kategorilerin üretim rotaları
 
-30 Ekim 2026'da belirtilen kurallar, önceki çeşme ve bank kuralları korunarak eklendi:
+30 Ekim 2026'da belirtilen kurallar, önceki çeşme ve bank kuralları korunarak eklendi. Kamelyalar ve piknik masaları kuralı 4 Kasım 2026'da eklendi:
 
 | Kategori | Reçete bileşeni | Üretim rotası |
 | --- | --- | --- |
@@ -127,6 +127,7 @@ Komut mevcut rotaları/adımları, elle girilmiş süreleri veya çelişen mevcu
 | Sehpa / Sehpalar | Diğer adı belli yarı mamuller | Döküm |
 | Döküm saksı | Tüm yarı mamuller | Döküm |
 | Ahşap saksı | Tüm yarı mamuller | Ahşap |
+| Kamelyalar ve piknik masaları; Kamelya / Kamelyalar; Piknik masası / Piknik masaları | Ana ürünler ve tüm yarı mamuller | Ahşap |
 
 Izgara dışındaki bu yeni kategorilerde **Mamul** etiketli reçete bileşenleri de **Yarı mamuller** bölümünde gösterilir ve aynı kurallarla rota alır. Kaynak tür etiketi, özgün hücreler ve mevcut kart türü değiştirilmez. Aynı bileşen kodu bir satırda Mamul, diğerinde Yarı Mamul olarak verilmişse ad ve birim uyumlu olduğunda aynı karta bağlanır. Ad, birim veya hammadde/parça türü uyuşmazlıkları bu istisnaya girmez. Çeşme ve bankların önceki Mamul yorumlaması değişmez.
 
@@ -136,7 +137,9 @@ Kategori eşleştirmesi Excel sayfa adına göre yapılır; tanımlı tekil/ço�
 
 Sehpa / Sehpalar grubunda ahşap istisnası **Masa tablası** bileşen adının tamamına uygulanır; büyük/küçük harf ve fazla boşluk farkları desteklenir. Diğer adı belli yarı mamuller dökümdür. Kaynakta Mamul yazan bileşenler de aynı kurala dahildir. Adı boş bir bileşenin tabla mı, diğer yarı mamul mü olduğu tahmin edilmez; inceleme notuyla rota ataması yapılmaz. Aynı stok kartının başka kategoride farklı rota gerektirmesi mevcut atamayı değiştirmez; çelişki raporlanır.
 
-Bu kategori üretim kuralları Izgara ana mamulü istisnası dışındaki üst ürünlere, hammaddelere, parçalara veya kapsam dışındaki kategorilere uygulanmaz. Hammaddelerin dışarıdan temin rotası aşağıdaki ayrı kuralla oluşturulur. Aynı kod hem üst ürün hem kendi bileşeni olarak verilmişse kendine bağlı rota oluşturulmaz. Kart başka bir üründe bileşen olarak kullanılıyorsa o gerçek bileşen ilişkisi değerlendirilebilir. Bir kart için ahşap ve döküm gibi çelişkili kurallar çıkarsa mevcut atama korunur; yeni seçim yapılmaz ve `setup_component_routes` çıktısındaki `skipped` listesinde açıklanır.
+**Kamelyalar ve piknik masaları** birleşik grubu ile ayrı **Kamelya/Kamelyalar** ve **Piknik masası/Piknik masaları** gruplarında ana ürünler ve tüm yarı mamuller ahşap üretimine bağlanır. Birleşik adın tanımlı tekil/çoğul biçimleri, Türkçe büyük/küçük harf ve fazla boşluk farkları desteklenir. **Mamul** etiketli reçete bileşenleri de bu kapsamdadır. Reçetesi olmayan, grubu belli ana ürün veya Yarı mamul kartına mevcut katalog için komut çalıştırıldığında rota atanabilir; reçete oluşturulmaz. Yeni dosya aktarımı yalnızca o kaynağın kartlarına uygulanır. Standart adımlar **Ahşap hammadde → Lata üretimi → Boya → Hazır ahşap parçalar** olur; bilinmeyen süreler boş kalır. Hammaddeler dışarıdan temin edilir, Parça türündeki bileşenlere bu kuralla üretim rotası atanmaz.
+
+Bu kategori üretim kuralları, Izgara ile Kamelyalar ve piknik masaları ana mamulleri dışındaki üst ürünlere, hammaddelere, parçalara veya kapsam dışındaki kategorilere uygulanmaz. Hammaddelerin dışarıdan temin rotası aşağıdaki ayrı kuralla oluşturulur. Aynı kod hem üst ürün hem kendi bileşeni olarak verilmişse kendine bağlı bileşen ilişkisi oluşturulmaz; grubun ana ürün rotası yine değerlendirilebilir. Kart başka bir üründe bileşen olarak kullanılıyorsa o gerçek bileşen ilişkisi değerlendirilebilir. Bir kart için ahşap ve döküm gibi çelişkili kurallar çıkarsa mevcut atama korunur; yeni seçim yapılmaz ve `setup_component_routes` çıktısındaki `skipped` listesinde açıklanır.
 
 Yeni Excel aktarımlarında kurallar otomatik uygulanır. Önceden aktarılmış ve kart bağlantısı bulunan satırlar için aynı `setup_component_routes` komutunu kullanın. Aynı dosyayı yeniden yüklemek aktarımı tekrarlamaz. Önceden çelişki nedeniyle kart bağlantısı boş bırakılmış kaynak satırları bu komutla yeniden yazılmaz; bu kayıtlar ayrıca incelenmelidir. Mevcut rotalar, adımlar, süreler ve başlatılmış iş emirleri korunur; bilinmeyen süre veya malzeme miktarı eklenmez.
 
