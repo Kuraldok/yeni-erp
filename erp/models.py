@@ -1,4 +1,5 @@
 from decimal import Decimal, localcontext
+from uuid import uuid4
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
@@ -86,6 +87,28 @@ class Product(BusinessModel):
                 from .routing import apply_raw_material_routes
                 apply_raw_material_routes(product_ids=[self.pk])
             return result
+
+class ProductImage(BusinessModel):
+    product = models.OneToOneField(Product, on_delete=models.PROTECT, related_name='picture', verbose_name='Ana ürün')
+    image = models.BinaryField('Resim', editable=False)
+    thumbnail = models.BinaryField('Küçük önizleme', editable=False)
+    content_type = models.CharField('Resim türü', max_length=20, choices=[('image/jpeg', 'JPEG'), ('image/png', 'PNG')])
+    width = models.PositiveIntegerField('Genişlik')
+    height = models.PositiveIntegerField('Yükseklik')
+    revision = models.UUIDField(default=uuid4, editable=False)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+', editable=False)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+', editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Ana ürün resmi'
+        verbose_name_plural = 'Ana ürün resimleri'
+        default_permissions = ()  # Uses the existing product view/change permissions.
+
+    def __str__(self):
+        return f'{self.product.code} · Ürün resmi'
+
 
 class Warehouse(BusinessModel):
     name = models.CharField('Depo adı', max_length=100, unique=True)

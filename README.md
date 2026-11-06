@@ -87,6 +87,14 @@ Ana ürünün koduna, adına veya **Ayrıntılar** bağlantısına tıkladığı
 
 Ana ürün görünümü mevcut üst ürün ilişkilerinden belirlenir; yarı mamul, hammadde ve parça kartları ana listede gösterilmez. Henüz reçetesi olmayan elle açılmış mamul/sınıflandırılmamış bağımsız kartlar görünmeye devam eder. Liste değişikliği stok, kart veya reçete kayıtlarını silmez; bileşen ayrıntıları için mevcut reçete görüntüleme izinleri geçerlidir.
 
+### Ana ürün resimleri
+
+**Ürün kartları** ve **Stok kartları** listelerinde ana ürünün resmi ürün kodunun hemen yanında görünür. Resim veya kod bağlantısı mevcut sayfa içi ürün ayrıntısını açar; ayrıntıda da resim kodun yanındadır. Her ana ürünün tek resmi vardır.
+
+Ürün görüntüleme ve düzenleme yetkisi olan kullanıcı **Düzenle → Ürün resmi → Kaydet** ile resim ekleyebilir. Yeni dosya seçmek mevcut resmi değiştirir. **Mevcut ürün resmini sil** seçilip kaydedilirse resim kaldırılır. JPG, PNG ve WebP dosyaları en fazla 5 MB ve 20 milyon piksel olabilir. Hatalı dosyada veya eski bir formdan gönderimde mevcut resim korunur. Yarı mamul, hammadde, parça ve yalnız bileşen olan kartlarda resim yükleme alanı bulunmaz.
+
+Resimler kullanıcı girişi ve ürün görüntüleme yetkisiyle sunulur. Ekleme, değiştirme ve silmenin kullanıcı/zaman/gerekçesi **İşlem geçmişi** ekranında tutulur. Resim ve küçük önizleme veritabanında saklanır; veritabanı yedeğine dahildir ve kaynak koduyla GitHub'a gönderilmez. Güncellemede `migrate` ile `0013_product_images` uygulanır; önceki kart ve işlem kayıtları korunur.
+
 Ürün ayrıntısındaki birim ihtiyaçlar adet için ondalıksız, diğer ölçü birimleri için üç ondalık basamakla gösterilir (örneğin `2 Adet`, `21,000 KG`). Aynı gösterim reçetenin ihtiyaç hesabında da kullanılır. Yeni Adet miktarları tam sayı olmalıdır. Geçmişteki kesirli Adet kaynakları değiştirilmeden incelemeye ayrılır; ekranda özgün değer ve inceleme uyarısı gösterilir. Boş miktarlar boş kalır. Ana kontrol panelindeki ürün toplamı, Ürün Kartları listesindeki ana ürünleri sayar; bileşenleri veya aynı ürüne ait farklı reçete sürümlerini ayrıca saymaz.
 
 **Reçete satırları ve eksikler** listesindeki **Bir üst ürün için ihtiyaç** sütunu adet için ondalıksız, diğer birimler için iki ondalık basamakla gösterilir (`2`, `8,45`, `7,00`). Bu biçimlendirme miktarları yalnızca ekranda yuvarlar; kaynak ve kayıtlı değerler korunur.

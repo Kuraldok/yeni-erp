@@ -5,12 +5,14 @@ from django.core.exceptions import PermissionDenied
 from django.http import Http404
 from django.urls import reverse
 
-from .models import MaterialRecipe
+from .models import MaterialRecipe, ProductImage
+from .product_images import product_image_url
 from .production import material_plan
 from .routing import is_grill_category, is_semifinished_component
 
 
 def product_detail_context(request, product, *, stock_card=False):
+    picture = ProductImage.objects.only('product_id', 'revision').filter(product=product).first()
     group_names = {r.sheet for r in product.materialrecipe_set.all() if r.sheet}
     if product.category:
         group_names.add(product.category)
@@ -47,6 +49,7 @@ def product_detail_context(request, product, *, stock_card=False):
             ]
     return {
         'product': product, 'tab': tab, 'can_view_components': can_view_components,
+        'product_image_url': product_image_url(picture) if picture else '',
         'recipes': recipes, 'selected_recipe': selected_recipe, 'sections': sections,
         'slug': 'stok-kartlari' if stock_card else 'urunler',
         'card_list_title': 'Stok kartları' if stock_card else 'Ürün kartları',

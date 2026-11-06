@@ -1,7 +1,7 @@
 {% load erp_numbers %}
 <div data-product-content data-product-id="{{ product.pk }}">
 <a href="{% url 'listing' slug %}" data-product-list>← {{ card_list_title }}</a>
-<div class="page-heading"><div><p class="eyebrow">ANA ÜRÜN</p>{% if embedded %}<h2 class="product-title">{{ product.name|default:product.code }}</h2>{% else %}<h1>{{ product.name|default:product.code }}</h1>{% endif %}<p class="muted">{{ product.code }}</p></div>{% if perms.erp.change_product %}<a class="button secondary" href="{% url 'edit' slug product.pk %}">{{ card_edit_title }}</a>{% endif %}</div>
+<div class="page-heading"><div><p class="eyebrow">ANA ÜRÜN</p>{% if embedded %}<h2 class="product-title">{{ product.name|default:product.code }}</h2>{% else %}<h1>{{ product.name|default:product.code }}</h1>{% endif %}<p class="muted product-code-display product-code-heading">{% if product_image_url %}<img class="product-thumbnail" src="{{ product_image_url }}" alt="{{ product.code }} ürün resmi" width="72" height="72" decoding="async">{% endif %}<span>{{ product.code }}</span></p></div>{% if perms.erp.change_product %}<a class="button secondary" href="{% url 'edit' slug product.pk %}">{{ card_edit_title }}</a>{% endif %}</div>
 {% if is_grill %}<p class="notice">Bu Izgara ürünü tek mamul olarak dökümde üretilir; yarı mamul bulunmaz. Hammadde ihtiyaçları aşağıda ayrı gösterilir.</p>{% endif %}
 {% if direct_routes %}<section class="panel"><h2>Ürünün üretim rotaları</h2><ul>{% for route in direct_routes %}<li><a href="{% url 'route_detail' route.pk %}">{{ route.name }} · v{{ route.version }}</a></li>{% endfor %}</ul></section>{% endif %}
 <nav class="product-tabs" aria-label="Ürün ayrıntı sekmeleri">

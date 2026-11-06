@@ -84,3 +84,12 @@
 - Kendine bağlı, doğrudan ve dolaylı döngüler; toplu ekleme, başarısız `set()`, ters ilişki, tekrarlı ekleme, geçerli ortak bağımlılıklar, başladıktan sonra bağlantı değişiklikleri ve form hatasında diğer alanların da korunması doğrulandı.
 - Bağlı çalışan/tamamlanmış iş varken ters üretim engellendi. Taslak ve iptal edilmiş bağlı işlerle izinli ters işlem, aynı ters fişin tekrarı, özgün parti ve stok geçmişi, eski tutarsız ön koşulda ilerleme/iptal koruması test edildi.
 - Geliştirme veritabanının SHA-256 özeti değişmedi; SQLite bütünlük ve yabancı anahtar kontrolleri başarılı. Örnek işlemler yalnız bellekteki test veritabanında kaldı. GitHub'a aktarım veya sunucu dağıtımı yapılmadı.
+
+## Ana ürün kodunun yanında resim — 6 Kasım 2026
+
+- Geçici veritabanında 315 test geçti; önceki 291 teste 24 resim senaryosu eklendi. Django kontrolü ve migration tutarlılığı başarılı. Pillow 13.0.0 eklendi.
+- Ana ürün oluşturma/düzenleme, tek resim ekleme/değiştirme/silme, ürün ve stok listesinde kodla aynı hücre, normal/sayfa içi ayrıntılar, yetkiler, CSRF, değişmiş resme eski formdan müdahale ve yalnız ana ürün kapsamı sınandı.
+- JPG/PNG/WebP, dosya boyutu ve piksel sınırı, bozuk veya sahte dosya, hareketli resim, EXIF yönü/metadata temizliği, şeffaflık, 1600/160 piksel boyutları ve yetkili önbellek/HEAD/304 yanıtları doğrulandı. Liste sorgusu resim byte'larını almadan tek ek sorguyla metadata getiriyor.
+- Resim kaydı veya silme/audit sırasında hata olduğunda kart, resim ve işlem geçmişinin birlikte geri alınması doğrulandı. Mevcut stok/reçete/iş verileri korundu; açık üretim işi bulunan ana ürünün resmi değiştirilebiliyor.
+- Chromium'da ayrı sentetik veritabanıyla resim ekleme → kod yanındaki önizleme → sayfa içi ayrıntı → stok kartından değiştirme → hatalı dosyada eski resmi koruma → silme akışı tamamlandı. Masaüstü ve mobilde sayfa taşması veya JavaScript hatası görülmedi. Gözlemci resmi görebildi, düzenleyemedi; anonim resim isteği girişe yönlendi.
+- Geliştirme ortamına `0013` uygulandı. Önceden bulunan 35 tablonun bütün özgün satırları/sütun değerleri korundu; SQLite bütünlük ve yabancı anahtar kontrolleri başarılı. Yeni resim tablosu boş kaldı; örnekler yalnız geçici veritabanlarında kullanıldı. GitHub'a aktarım veya sunucu dağıtımı yapılmadı.

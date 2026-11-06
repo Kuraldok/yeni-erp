@@ -6,11 +6,13 @@ from erp.order_views import product_options, cancel_order_line
 from erp import inventory_views
 from erp import operational_views
 from erp.reports import reports
+from erp.product_images import product_image
 
 admin.site.site_header = 'Kural Döküm • Kullanıcı ve yetki yönetimi'
 admin.site.site_title = 'Kural Döküm'
 admin.site.index_title = 'Yönetim'
 urlpatterns = [
+    path('urun-resmi/<int:pk>/<uuid:revision>/<str:variant>/', product_image, name='product_image'),
     path('kritik-stok/',views.critical_stock,name='critical_stock'),
     path('raporlar/',reports,name='reports'),
     path('stok-karti/<int:pk>/',operational_views.stock_card,name='stock_card_detail'),

@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import wraps
 from inspect import signature
+from hashlib import sha256
 import json
 
 from django.core.serializers.json import DjangoJSONEncoder
@@ -45,8 +46,13 @@ class AuditMiddleware:
 
 
 def snapshot(instance):
-    return json.loads(json.dumps({field.attname:getattr(instance,field.attname)
-        for field in instance._meta.concrete_fields}, cls=DjangoJSONEncoder))
+    values = {}
+    for field in instance._meta.concrete_fields:
+        value = getattr(instance, field.attname)
+        if isinstance(field, models.BinaryField) and value is not None:
+            value = {'bytes': len(value), 'sha256': sha256(bytes(value)).hexdigest()}
+        values[field.attname] = value
+    return json.loads(json.dumps(values, cls=DjangoJSONEncoder))
 
 
 def event(instance, action, before=None, reason=''):

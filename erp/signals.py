@@ -26,7 +26,7 @@ def after_business_save(sender, instance, created, raw=False, **kwargs):
 @receiver(post_delete)
 def after_business_delete(sender, instance, **kwargs):
     if isinstance(instance, BusinessModel):
-        event(instance, 'delete', snapshot(instance))
+        event(instance, 'delete', snapshot(instance), instance.__dict__.pop('_audit_reason', ''))
         from .models import ConsumptionRecipeLine
         if isinstance(instance, ConsumptionRecipeLine):
             recipe = instance.recipe

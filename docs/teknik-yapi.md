@@ -62,6 +62,16 @@ Izgara için rota doğrudan ana mamule atanır; `is_codeless_grill_material` yal
 
 Ürün kartlarında `static/product-tabs.js`, listeyi DOM'da koruyarak ayrıntıları kapatılabilir sekmelerde açar. `product_detail` aynı izin ve reçete doğrulamalarından sonra `X-Product-Tab: 1` isteğine `product_content.html` parçasını, normal isteğe sayfa kabuğunu döndürür; önbellek ayrımı `Vary` başlığıyla yapılır. Sekme ve reçete geçişleri aynı ürün uç noktasını kullanır. Her ürünün form kimlikleri ayrıdır; kapanan veya yenisiyle değişen istekler iptal edilir. Kaynak satırı sütunu yalnızca ürün ayrıntı sunumundan çıkarılmıştır; model, kaynak satırları ve veritabanı şeması değişmez.
 
+## Ana ürün resimleri
+
+`ProductImage` ürüne bire bir bağlıdır; resim ve önizleme `BinaryField` alanlarında, tür/boyut/sürüm ve oluşturan/son düzenleyen kullanıcı/tarihler ile saklanır. `0013_product_images` yalnız bu yeni tabloyu ekler. Dosyaların veritabanında tutulması kart, resim ve audit'in tek atomik işlemde kaydedilmesini/silinmesini sağlar; başarısız işlemde eski resim korunur. Resimler veritabanı yedeğinin parçasıdır; ayrı herkese açık medya klasörü oluşturulmaz.
+
+`erp/product_forms.py` resim alanlarını yalnız uygun ana ürün ve mevcut `view_product` / `change_product` izinleri için açar. `save_product_image()` ürün satırını kilitleyip ana ürün uygunluğunu ve UUID sürümünü tekrar kontrol eder. Eski form yeni resmi değiştiremez veya silemez. Resim taşıyan kartı yarı mamul/hammadde/parçaya çevirmeden önce resim kaldırılır. Yeni model ayrı modül veya yeni rol izni açmaz.
+
+`erp/product_images.py`, Pillow ile gerçek dosya türü, 5 MB / 20 milyon piksel ve tek kare sınırını denetler. JPG/PNG/WebP yeniden kodlanır; EXIF yönü uygulanır, metadata çıkarılır, şeffaflık korunur. Uzun kenarı en fazla 1600 piksel resim ve 160 piksel önizleme oluşturulur. `audit.snapshot()` ikili alanları byte sayısı ve SHA-256 ile temsil eder; resim byte'ları audit JSON'una kopyalanmaz. Silme gerekçesi de denetim kaydına taşınır.
+
+Listeler yalnız `ProductImage` kimlik/ürün/sürüm alanlarını tek ek sorguyla önden getirir; resim byte'ları liste HTML sorgusunda yüklenmez. Yetkili `product_image` GET/HEAD uç noktası sürümlü URL, doğru MIME, özel ve yeniden doğrulanan önbellek, ETag ve Cookie ayrımıyla resmi sunar. Kimlik ve yetki kontrolü 304 yanıtından önce yapılır. Aynı kod hücresindeki küçük resim mevcut sayfa içi sekme bağlantısını kullanır. `erp/test_product_images.py` bu akışları ve hata halinde tam geri almayı doğrular.
+
 ## Birlikte sipariş ve kalem girişi
 
 `erp/orders.py` iki ekranın ortak ürün uygunluğu ve grup/seçenek verisini üretir. Satışta `main_products()` ilişkisi, satın almada `Product.kind='raw'` kullanılır. `erp/order_forms.py` başlık formunu ve mevcut `OrderLine` modeli üzerinde çalışan inline formset'i tanımlar. `erp/order_views.py` siparişi ve kalemlerini atomik kaydeder; bağımsız kalem ekranı da aynı seçim kuralını kullanır. Şema veya ayrı kalem tablosu eklenmez.

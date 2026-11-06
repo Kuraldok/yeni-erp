@@ -20,6 +20,7 @@ from .group_filters import available_groups, can_filter_groups, filter_by_group
 from .templatetags.erp_numbers import requirement_list_amount, count_amount
 from .models import ConsumptionRecipe, ConsumptionRecipeLine, AuditEvent, QuantityReview, ProductionPosting
 from .quantities import is_count_unit, quantity_fields
+from .product_images import product_image_url, save_product_image
 
 @login_required
 def dashboard(request):
@@ -85,8 +86,10 @@ def listing(request, slug):
     can_filter = can_filter_groups(request.user, model)
     groups = available_groups(request.user) if can_filter else []
     if model is Product:
+        from django.db.models import Prefetch
+        from .models import ProductImage
         qs = main_products()
-        qs = qs.prefetch_related('materialrecipe_set')
+        qs = qs.prefetch_related('materialrecipe_set', Prefetch('picture', queryset=ProductImage.objects.only('product_id', 'revision')))
     qs = filter_by_group(qs, category, request.user)
     order_filter = ''
     selected_order = None
@@ -156,7 +159,8 @@ def listing(request, slug):
         if model is ConsumptionRecipeLine:
             editable=not obj.recipe.locked
         cancel_url = reverse('cancel_order_line',args=[obj.pk]) if model is OrderLine and editable and request.user.has_perm('erp.cancel_orderline') else ''
-        rows.append({'pk':obj.pk, 'values':values,'detail':detail,'editable':editable,'cancel_url':cancel_url,'product_detail':detail if model is Product else '', 'release_url':reverse('release_stockreservation',args=[obj.pk]) if slug=='rezervasyonlar' and obj.state=='active' and obj.order_line_id and request.user.has_perm('erp.release_stockreservation') else ''})
+        picture = getattr(obj, 'picture', None) if model is Product else None
+        rows.append({'pk':obj.pk, 'values':values,'detail':detail,'editable':editable,'cancel_url':cancel_url,'product_detail':detail if model is Product else '', 'image_url':product_image_url(picture) if picture else '', 'release_url':reverse('release_stockreservation',args=[obj.pk]) if slug=='rezervasyonlar' and obj.state=='active' and obj.order_line_id and request.user.has_perm('erp.release_stockreservation') else ''})
     return render(request,'erp/list.html', {'title':title,'slug':slug,'is_product_list':model is Product,'has_detail':slug in ['stok-kartlari','stok-belgeleri','siparisler','urunler','rotalar','receteler','excel-aktarimlari','uretim-akislari','uretim-isleri','tuketim-receteleri','islem-gecmisi','uretim-stok-fisleri'],'headers':headers,'rows':rows,'page':page,'q':search,'groups':groups,'category':category,'can_filter_groups':can_filter,'order_filter':order_filter,'selected_order':selected_order,'recipe_filter':recipe_filter,'can_cancel':(model is OrderLine and request.user.has_perm('erp.cancel_orderline')) or slug=='rezervasyonlar','can_add':model not in READ_ONLY_MODELS and permitted(request.user,'add',model),'can_edit':model not in READ_ONLY_MODELS and model is not StockMovement and permitted(request.user,'change',model)})
 
 
@@ -194,7 +198,14 @@ def edit(request, slug, pk=None):
         raise PermissionDenied('Kullanılmış reçete için yeni sürüm oluşturun.')
     if model is ConsumptionRecipeLine and pk is not None and obj.recipe.locked:
         raise PermissionDenied('Kullanılmış reçetenin girdileri korunur.')
-    Form = modelform_factory(model, exclude=['created_by','created_at'], widgets={'date':forms.DateInput(attrs={'type':'date'},format='%Y-%m-%d'),'due_date':forms.DateInput(attrs={'type':'date'},format='%Y-%m-%d')})
+    if model is Product:
+        from .product_forms import ProductForm
+        Form = ProductForm
+        if request.method == 'POST' and (request.FILES.get('photo') or request.POST.get('remove_photo')):
+            if not request.user.has_perms(['erp.view_product', 'erp.change_product']):
+                raise PermissionDenied('Ürün resmi düzenleme yetkiniz yok.')
+    else:
+        Form = modelform_factory(model, exclude=['created_by','created_at'], widgets={'date':forms.DateInput(attrs={'type':'date'},format='%Y-%m-%d'),'due_date':forms.DateInput(attrs={'type':'date'},format='%Y-%m-%d')})
     initial = {}
     if model is ConsumptionRecipe and pk is None and request.method == 'GET' and request.GET.get('product'):
         from .orders import selection_pk
@@ -227,7 +238,8 @@ def edit(request, slug, pk=None):
         if not request.user.has_perm('erp.link_production_orders') and not all(request.user.has_perm('erp.'+code) for code in ('view_order','view_orderline')):raise PermissionDenied
         line=get_object_or_404(OrderLine,pk=request.GET['order_line'],status='active',order__kind='sale')
         initial.update(order_line=line.pk,product=line.product_id,unit=line.unit,quantity=line.remaining_quantity)
-    form = Form(request.POST or None, instance=obj, initial=initial)
+    form_options = {'can_manage_image': request.user.has_perms(['erp.view_product', 'erp.change_product'])} if model is Product else {}
+    form = Form(request.POST or None, request.FILES or None, instance=obj, initial=initial, **form_options)
     # Do not leak names of related records through selectors without view permission.
     for field_name,field in form.fields.items():
         if model is ProductionJob and field_name=='order_line' and request.user.has_perm('erp.link_production_orders'):
@@ -262,6 +274,9 @@ def edit(request, slug, pk=None):
             with transaction.atomic():
                 record.save()
                 form.save_m2m()
+                if model is Product:
+                    save_product_image(record, form.cleaned_data.get('photo'), form.cleaned_data.get('remove_photo'),
+                        form.cleaned_data.get('photo_token'), request.user)
         except ValidationError as exc:
             form.add_error(None, exc)
         except OperationalError:
@@ -272,7 +287,9 @@ def edit(request, slug, pk=None):
             if model is ConsumptionRecipe: return redirect('consumption_recipe_detail',pk=record.pk)
             if model is ConsumptionRecipeLine: return redirect('consumption_recipe_detail',pk=record.recipe_id)
             return redirect('listing',slug=slug)
-    return render(request,'erp/form.html',{'form':form,'title':title,'slug':slug,'editing':pk is not None,'quantity_field':quantity_field,'product_units':product_units})
+    picture = form.current_picture if model is Product and request.user.has_perm('erp.view_product') and form.image_eligible else None
+    return render(request,'erp/form.html',{'form':form,'title':title,'slug':slug,'editing':pk is not None,'quantity_field':quantity_field,'product_units':product_units,
+        'product_image_url': product_image_url(picture) if picture else '', 'product_image_code': obj.code if model is Product else ''})
 
 
 class CatalogUploadForm(forms.Form):
